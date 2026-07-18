@@ -33,6 +33,7 @@ import smiteconfig as cfg
 
 import smiteskin as skin
 BG = skin.VOID   # matches smitecard's background so there's no border seam
+MIN_UI_SCALE = 0.12
 
 # ---- win32 constants ----
 GWL_EXSTYLE = -20
@@ -154,17 +155,21 @@ def move_window(hwnd, x, y):
         return False
 
 
-def ui_scale(size, mon, extra_h=0):
-    """Resolution-adaptive display scale for a rendered frame. The boards are drawn for a
-    1080p-tall screen: on a shorter screen (lower in-game display resolution, a laptop)
-    they shrink proportionally, and every frame is additionally hard-clamped to FIT its
-    monitor (the champ-select panel is taller than a 1080p screen at full size). Never
-    upscales — text stays crisp on big monitors."""
+def ui_scale(size, mon, extra_h=0, docked=False):
+    """Resolution-adaptive display scale for a rendered frame.
+
+    Non-docked boards (loading / in-game) intentionally occupy a bounded slice of the
+    monitor so they don't dominate the whole screen, then hard-clamp to fit. Docked
+    champ-select panels skip the occupancy cap and only fit-clamp. Never upscales."""
     w, h = size
     mw, mh = max(1, mon[2] - mon[0]), max(1, mon[3] - mon[1])
-    s = min(1.0, mh / 1080.0)
-    s = min(s, (mh - 16 - extra_h) / max(1, h), (mw - 16) / max(1, w))
-    return max(0.5, s)
+    fit = min((mh - 16 - extra_h) / max(1, h), (mw - 16) / max(1, w))
+    if docked:
+        s = min(1.0, fit)
+    else:
+        occ = min((mw * 0.78) / max(1, w), (mh * 0.84 - extra_h) / max(1, h))
+        s = min(1.0, fit, occ)
+    return max(MIN_UI_SCALE, s)
 
 
 def _open_profile():
@@ -361,7 +366,9 @@ def main():
 
     st = {"img": None, "dirty": False, "ref": None, "size": None, "hitmap": [],
           "pos": None, "shown": False, "closing": False, "done": False,
-          "docked": False, "client_moved": None, "barh": bar_h}
+          "docked": False, "client_moved": None, "barh": bar_h,
+          "user_scale": 1.0, "user_scaled": False, "auto_scale": 1.0,
+          "raw_size": None, "win_size": None, "_placing": False}
     lock = threading.Lock()
 
     def emit(pil_img):                           # called from the worker thread (no Tk here!)
@@ -486,6 +493,42 @@ def main():
     label.bind("<B1-Motion>", on_drag)
     label.bind("<ButtonRelease-1>", on_release)
     label.bind("<Motion>", on_motion)
+
+    # User-resizing a borderless window can leave the image clipped if we don't recompute
+    # scale immediately. Treat size changes that diverge from the auto-fit size as a user
+    # override (shrink-only), and redraw at that scale.
+    def on_configure(e):
+        if e.widget is not root or st["closing"]:
+            return
+        wh = (max(1, int(e.width)), max(1, int(e.height)))
+        if wh == st.get("win_size"):
+            return
+        st["win_size"] = wh
+        if st.get("_placing") or st["docked"]:
+            return
+        raw = st.get("raw_size")
+        if not raw:
+            return
+        avail_h = max(1, wh[1] - st["barh"])
+        ns = min(wh[0] / max(1, raw[0]), avail_h / max(1, raw[1]))
+        ns = max(MIN_UI_SCALE, min(1.0, ns))
+        auto = max(MIN_UI_SCALE, min(1.0, st.get("auto_scale", 1.0)))
+        if ns >= auto - 0.02:
+            if st.get("user_scaled"):
+                st["user_scaled"] = False
+                st["user_scale"] = 1.0
+                with lock:
+                    if st["img"] is not None:
+                        st["dirty"] = True
+            return
+        if (not st.get("user_scaled")) or abs(ns - st.get("user_scale", 1.0)) > 0.01:
+            st["user_scaled"] = True
+            st["user_scale"] = ns
+            with lock:
+                if st["img"] is not None:
+                    st["dirty"] = True
+
+    root.bind("<Configure>", on_configure)
     root.bind("<Escape>", close)
     label.bind("<Button-3>", close)              # right-click the board to close (not the key bar)
 
@@ -508,7 +551,12 @@ def main():
             l, t, r, b = target_monitor()
             st["pos"] = (l + ((r - l) - w) // 2, t + ((b - t) - wh) // 2)
         x, y = st["pos"]
+        def _done_placing():
+            st["_placing"] = False
+        st["_placing"] = True
+        st["win_size"] = (w, wh)
         root.geometry(f"{w}x{wh}+{x}+{y}")
+        root.after_idle(_done_placing)
 
     def pump():
         if st["closing"]:
@@ -519,6 +567,7 @@ def main():
         if dirty and pil is not None:
             prev_fg = _user32.GetForegroundWindow()     # whatever had focus (the game/client)
             want_dock = bool(getattr(pil, "dock_left", False))
+            st["raw_size"] = pil.size
             # Resolution-adaptive display: find the monitor this frame will live on and
             # scale the rendered board to it. A lower in-game display resolution shrinks
             # the whole UI in step, and the tall champ-select panel can never spill off
@@ -531,7 +580,13 @@ def main():
                 mon = monitor_of(st["pos"][0], st["pos"][1])
             else:
                 mon = target_monitor()
-            s = ui_scale(pil.size, mon, extra_h=0 if want_dock else bar_h)
+            base_s = ui_scale(pil.size, mon, extra_h=0 if want_dock else bar_h, docked=want_dock)
+            st["auto_scale"] = base_s
+            if want_dock:
+                s = base_s
+            else:
+                s = min(base_s, st["user_scale"]) if st.get("user_scaled") else base_s
+                s = max(MIN_UI_SCALE, s)
             disp = pil if s >= 0.999 else pil.resize(
                 (max(1, round(pil.width * s)), max(1, round(pil.height * s))), Image.LANCZOS)
             ref = ImageTk.PhotoImage(disp)       # build on the Tk (main) thread

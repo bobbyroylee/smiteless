@@ -2429,6 +2429,25 @@ LW = 1480                 # the LIVE board's DESIGN width; it renders scaled to 
 BOARD_TARGET = (1920, 1080)   # (w, h) of the monitor the board will live on — the overlay
                               # sets this at launch; the renderer sizes itself to fill it
 _TAG_TONE = {"good": GREEN, "bad": RED, "neutral": MUTED, "info": INFO}
+_TAG_FILL = {
+    "good": _dim(GREEN, 0.24),
+    "bad": _dim(RED, 0.22),
+    "neutral": RAISED,
+    "info": _dim(INFO, 0.22),
+}
+_TAG_EDGE = {
+    "good": _dim(GREEN, 0.78),
+    "bad": _dim(RED, 0.75),
+    "neutral": _dim(LINE, 0.95),
+    "info": _dim(INFO, 0.72),
+}
+
+
+def _tag_style(tone):
+    ink = _TAG_TONE.get(tone, MUTED)
+    fill = _TAG_FILL.get(tone, _dim(ink, 0.24))
+    edge = _TAG_EDGE.get(tone, _dim(ink, 0.72))
+    return fill, edge, ink
 
 
 def _board_scale():
@@ -2558,9 +2577,11 @@ def render_live_board(dd, my_cid, my_role, ally_role, enemy_role, build, lanes, 
     half = (BW - S(28) - CTR) // 2                # each team's half-row width
     AW = S(104)                                   # art slab width
 
-    def _pill(x, y, txt, col, maxx, anchor="la"):
-        f = font(S(10), 1)
-        w = d.textlength(txt, font=f) + S(14)
+    def _pill(x, y, txt, tone, maxx, anchor="la"):
+        fill, edge, ink = _tag_style(tone)
+        f = display_font(S(11), True)
+        h = S(20)
+        w = d.textlength(txt, font=f) + S(18)
         if anchor == "ra":
             x0 = x - w
             if x0 < maxx:
@@ -2569,8 +2590,8 @@ def render_live_board(dd, my_cid, my_role, ally_role, enemy_role, build, lanes, 
             x0 = x
             if x0 + w > maxx:
                 return None
-        _rrect(d, (x0, y, x0 + w, y + S(18)), S(9), fill=SUNKEN, outline=_dim(col, 0.55), width=1)
-        d.text((x0 + S(7), y + S(3)), txt, font=f, fill=col)
+        _rrect(d, (x0, y, x0 + w, y + h), S(10), fill=fill, outline=edge, width=1)
+        d.text((x0 + S(9), y + h // 2), txt, font=f, fill=ink, anchor="lm")
         return (x0 - S(6)) if anchor == "ra" else (x0 + w + S(6))
 
     def _half(x0, y, cid, sc, ally, is_me, mirror):
@@ -2662,7 +2683,7 @@ def render_live_board(dd, my_cid, my_role, ally_role, enemy_role, build, lanes, 
             for txt_, tone in tags:
                 if shown >= 3 or ty > y + ROW - S(24):
                     break
-                res = _pill(inner, ty, txt_, _TAG_TONE.get(tone, MUTED),
+                res = _pill(inner, ty, txt_, tone,
                             (bx + S(16)) if not mirror else (bx - S(16)),
                             anchor=("ra" if not mirror else "la"))
                 if res is not None:

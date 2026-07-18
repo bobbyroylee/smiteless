@@ -1,5 +1,9 @@
 # Smiteless — Patch Notes
 
+## v0.9.25
+- **Player tags are now readable at a glance.** The in-game board's profile tags (OTP, tilt risk, smurf read, off-role, comfort, etc.) now render as stronger, cleaner chips: **green for good**, **red for bad**, with clearer neutral/info variants and a larger display face so they read fast on a second monitor.
+- **Overlay sizing is now truly adaptive (and no more cut-off on resize).** Non-docked boards now scale to a bounded share of the monitor instead of taking over most of the screen, and resize events re-render the board to the new size so shrinking the window no longer clips content. Docked champ-select panels keep fit-clamped behavior.
+
 ## v0.9.24
 - **The live board now fills its monitor.** It rendered at a fixed design size and could only ever shrink — small on the very screen it owns. It now **draws itself scaled to the monitor it opens on** (~1740px wide on 1080p, larger on 1440p+): every font, art slab, tag pill, grade chip and gank badge grows in step, crisp at any size because it re-renders instead of stretching pixels. Small windows and low resolutions still shrink-to-fit exactly as before.
 
