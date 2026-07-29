@@ -10,13 +10,31 @@ lose, and up to now Smiteless answered it with vibes. Two unrelated surfaces bot
     delta under -3, three losing lanes, one hard counter - which are somebody's taste, not a
     number you can argue with;
   - the ally scout flagged a teammate on a 3-loss streak and shouted about it, having never
-    once considered that the ENEMY team, which you cannot see in champ select, has tilted
-    players in it at exactly the same rate. A flag on your side is only evidence to the
-    extent that it BEATS that base rate, and about half the time it doesn't.
+    once considered that the OTHER team has tilted players in it at exactly the same rate. A
+    flag on your side is only evidence to the extent that it BEATS that base rate, and about
+    half the time it doesn't.
 
 Neither one knew what a dodge costs, what a game is worth to you, or how long either takes.
 So a dodge that saved 1 LP and a dodge that saved 12 read identically, and a lobby that was
 merely unlucky-looking got treated like a lost one.
+
+IN RANKED THIS IS A DRAFT CALL, AND THAT IS THE HONEST FRAMING
+Ranked champ select hides names — YOUR TEAM'S as well as the enemy's. You don't get anybody's
+match history until the loading screen, and by then the dodge window has closed. So in the
+mode this app exists for, the player-quality half of the lobby read usually has NOTHING to
+work with: `known` comes back 0, `lobby_edge` returns None, and the call stands on the draft
+and your own LP alone. That is not a degraded mode, it is the normal one — the flag plumbing
+below is kept because it is correct wherever names DO resolve (and costs nothing when they
+don't), but nothing in this module is sold on it. Champ select logs how many allies it
+actually resolved (core/smitecard's team scout) so the answer is in the log rather than in
+somebody's assumption.
+
+WHY YOUR OWN TILT IS DELIBERATELY *NOT* IN THIS SUM
+Your loss streak IS knowable in champ select, and it is tempting to price it here. It must not
+be: the comparison is this lobby against a FRESH one, and you are in both. Being on tilt makes
+this game worse and the next game worse by the same amount, so it cancels out of the dodge
+decision entirely — dodging does not fix it. The lever for that is the Queue Call (lolqueue),
+which is measured against your own history and says STOP. Do not "fix" this omission.
 
 WHAT THIS DOES INSTEAD
 One question, in LP, over the same horizon: **you have the next hour either way - which
@@ -42,9 +60,10 @@ WHAT'S EVIDENCE AND WHAT'S A MODEL, stated plainly (house rule, docs/TAGS.md):
     MIN_LANES lanes before the draft term may speak at all. Each one is already a GAME win
     rate for that pairing, so the lanes COMPOSE in log-odds rather than average (see DRAFT_K),
     and DRAFT_K halves the result so a noisy read can't carry a dodge on its own.
-  - THE FLAG BASE RATE is measured, by us, from the lobbies we have already scouted (every
-    champ select scouts four teammates; the running count lives in CACHE). Under MIN_SCOUTED
-    players seen it makes no claim and the lobby term is zero.
+  - THE FLAG BASE RATE, where flags exist at all, is measured by us from the lobbies we have
+    actually scouted (the running count lives in CACHE). Under MIN_SCOUTED players seen it
+    makes no claim and the lobby term is dropped — which, per the note above, is what happens
+    in ranked for as long as champ select hides names.
   - THE PER-FLAG EFFECT (FLAG_PP) is this module's ONE modelling assumption. It is small on
     purpose and capped at LOBBY_CAP, so the lobby term can never call a dodge by itself - it
     can only sharpen a draft that is already losing.
@@ -96,7 +115,6 @@ P_FLOOR, P_CEIL = 0.15, 0.85   # no draft read is more certain than this
 P0_PRIOR = 30                  # pseudo-games pulling a thin baseline toward 50%
 MIN_STAKE_N = 6                # LP deltas of each kind before we trust your own +/- per game
 ASSUMED_WIN, ASSUMED_LOSS = 20.0, 20.0     # the fallback, and it is labelled as one
-MIN_TILT_STREAK = 3            # losses in a row that make a player a flag (matches the scout)
 
 
 def log(msg):
@@ -430,12 +448,9 @@ def read(dd, allies, enemies, flags=None, known=0, dodges_today=0, ctx=None):
         draft = gather(dd, allies, enemies)
         ctx = ctx or context()
         flags = list(flags or [])
-        if known and ctx.get("streak", 0) >= MIN_TILT_STREAK:
-            # you are the fifth player on your team, and the Queue Call already knows how many
-            # losses you're riding. Counting yourself keeps the comparison honest - the enemy
-            # expectation covers five seats, so ours has to as well.
-            flags.append(f"you {ctx['streak']}L")
-            known += 1
+        # NB: your own loss streak is NOT added here even though we know it — see the header.
+        # It applies to this lobby and the next one equally, so it cancels; the Queue Call owns
+        # that decision.
         rate, seen = flag_rate()
         lob = lobby_edge(flags, known, rate) if known else None
         r = call(ctx, draft, lob, dodges_today)

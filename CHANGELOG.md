@@ -1,6 +1,6 @@
 ﻿# Smiteless â€” Patch Notes
 
-## v0.9.66 - THE DODGE CALL: your lobby, priced in LP
+## v0.9.66 - THE DODGE CALL: the draft, priced in LP
 
 - **New: every champ select now tells you what the lobby is worth, in LP.** A quiet line sits
   under your champion for the whole draft:
@@ -11,7 +11,7 @@
   turns red and becomes a card when the answer changes:
 
       DODGE - worth +2.8 LP vs playing it
-      5/5 lanes behind - worst Yasuo vs Malzahar (-11%) - Kayn 4L, Ashe F-grade
+      5/5 lanes behind - worst Yasuo vs Malzahar (-11%)
 
 - **Why this replaces the old "consider dodging" banner.** That banner fired on four numbers
   somebody picked by hand - average lane delta under -3, three losing lanes, one hard counter -
@@ -36,15 +36,21 @@
   five lanes is far worse than one losing a single lane, not the same. The lanes now compose the
   way independent effects actually compose, then get halved on purpose so a noisy read can never
   carry a dodge on its own.
-- **The tilt read stopped shouting.** The ally scout used to flag a teammate on a 3-loss streak
-  and yell DODGE READ - having never once considered that the enemy team, which you cannot see
-  in champ select, has tilted players in it at exactly the same rate. So Smiteless now MEASURES
-  that rate from every lobby it scouts, and a flag only counts for the amount it beats the other
-  team's expected share: *"Kayn 4L, Ashe F-grade - 2 flagged of 5 read, vs 0.6 expected on any
-  team."* Your own loss streak counts too, since you are the fifth player on that team.
-- **A tilted lobby can never dodge on its own.** The lobby read is capped by design - it can
-  sharpen a draft that is already losing, never call one. Under 40 players scouted it makes no
-  claim at all and the draft speaks alone.
+- **The tilt read stopped shouting, and in ranked it stopped pretending.** The ally scout used
+  to flag a teammate on a 3-loss streak and yell DODGE READ. Two things were wrong with that.
+  It never considered that the other team has tilted players at exactly the same rate, so a
+  flag is only worth what it BEATS - and, more to the point, **ranked champ select hides names,
+  your own team's included.** Nobody's match history exists until the loading screen, and by
+  then you can no longer dodge. So in ranked the Dodge Call is a DRAFT call and is now sold as
+  one. Where names do resolve, a flag counts only for its surplus over a base rate Smiteless
+  measures itself, capped so it can sharpen a losing draft but never call one - and under 40
+  players scouted it makes no claim at all.
+- **Champ select now logs how many teammates it could actually resolve**, so what the client
+  does or doesn't hand over is a line in the log instead of somebody's assumption.
+- **Your own loss streak is deliberately NOT in this math.** It looks like it belongs - but the
+  comparison is this lobby against a fresh one, and you are in both of them. Tilt makes this
+  game worse and the next one worse by the same amount, so it cancels; dodging does not fix it.
+  That is the Queue Call's job, and it already measures the split against your own history.
 - **Nothing here dodges for you** and nothing touches your client. It puts a number on the
   button you were already deciding whether to press.
 - Settings calls it **The Dodge Call** now (Champ-select automation). The self-test pins all of

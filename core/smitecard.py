@@ -3435,8 +3435,21 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
                                 except Exception:
                                     return None
 
-                            mates = [rid for rid in lg.champselect_allies()[:5]
+                            # RANKED HIDES NAMES — your own team's as well as the enemy's — so
+                            # this list is routinely EMPTY in the mode that matters, and the
+                            # dodge call then runs on the draft alone (by design, see
+                            # core/loldodge's header). Log what actually resolved so the answer
+                            # lives in the log instead of in an assumption.
+                            _rids = lg.champselect_allies()
+                            mates = [rid for rid in _rids[:5]
                                      if key and rid.lower() != (me_rid or "").lower()]
+                            try:
+                                import loldodge as _ldg
+                                _ldg.log(f"ally scout: chat roster returned {len(_rids)} "
+                                         f"name(s), {len(mates)} scoutable"
+                                         + ("" if key else " (no Riot API key -> none)"))
+                            except Exception:
+                                pass
                             reads = []
                             if mates:               # the four teammates read in parallel, not in a queue
                                 import concurrent.futures as _fx
