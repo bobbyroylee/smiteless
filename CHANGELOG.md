@@ -1,5 +1,74 @@
 ﻿# Smiteless â€” Patch Notes
 
+## v0.9.68 - THE WARD CLOCK: the vision war, live - and the last leak in the ledger
+
+**New feature, and it finishes the set. Every tag your profile can give you now has a
+surface that fires while the mistake is still preventable.**
+
+`no vision setup` has sat in your ledger with nothing in the game to answer it since the
+ledger existed. It was the last one. BLEED watches your health bar, RE-ENTRY the 90s after
+a death, THE CLOSER the closeout, THE GOLD CLOCK the first ten minutes of farm - and the
+gold clock is deliberately silent for jungle and support, because camps aren't on the lane
+schedule and a support's CS was never the story. So the two roles whose entire job is
+vision were the two roles with nothing to read. **This one is theirs.**
+
+- **It is a measurement, not a guess.** :2999 reports a **vision score for all ten
+  players**, every tick, unfiltered by fog - and that number *only ever goes up while a
+  ward of yours is alive*. So a score that hasn't moved in 1:40 isn't an opinion. It is a
+  fact that **nothing of yours is on the map**, and it needs no modelling constant at all.
+- **The head-to-head nobody has ever shown you.** One quiet row, all game: you against the
+  enemy in your own role. Same job, same minutes, same units - so it's an exact comparison,
+  not a benchmark:
+
+      WARD   14.2 v 21.6 · 0.9/min, bar 1.2 · 1 pink
+
+  That is the only live scoreboard in League for the thing a support is actually doing, and
+  the bar is your own profile's (1.2/min support, 0.55 jungle - the same number the
+  `no vision setup` tag grades you on, read from one place so the two can never disagree).
+- **PIT - the fight you were about to take blind.** In the ~75 seconds before a drake,
+  grubs, herald or baron, if nothing of yours is alive, it takes the card:
+
+      PIT - drake in 40s and nothing of yours is alive          1:00
+      go PAST the pit - their bot jungle entrance, so you see them
+      walk in and the fight starts on your terms
+
+  It speaks on a **shorter fuse there than anywhere else** on purpose: "ward the pit before
+  the drake" cannot be wrong, so a false alarm costs nothing and staying quiet costs the
+  objective. And it tells you **where** - deep past the pit when you're ahead, your own tri
+  and the pit mouth when you're behind, because those are opposite instructions and the
+  right one depends on the game you're in.
+- **PINK - 75 gold of map you already paid for.** It reads your actual inventory. A control
+  ward you bought and have carried for two minutes gets one card, once, and then never
+  again for that ward.
+- **It cannot cry wolf.** The whole surface stays **asleep until the live feed has proven
+  it reports a vision score at all**. If Riot ever drops the field, or a lobby doesn't send
+  it, everything here degrades to silence instead of telling a support who has warded all
+  game that he's blind. That tripwire is checked every single tick.
+- **It bills you once.** Dark time you spent on the grey screen is never counted against
+  you - that's RE-ENTRY's and BLEED's subject, and charging you twice for one death is how
+  a coach gets switched off. It also hands the slot straight back the moment the tempo
+  engine calls an actual fight, and it never outranks BLEED, RE-ENTRY or THE CLOSER.
+- Jungle and support only. It stays **silent for every laner** rather than invent a number,
+  for the same reason your profile has never graded a laner on vision.
+- On by default: **Settings -> Ward clock (the vision war, jg / sup)**. The widget legend
+  has a new WARD CLOCK section. Included in MAX ELO.
+
+**Tested:** 419,160 assertions before this shipped, plus the permanent guards in
+`selftest.py`. Every verdict branch is driven across a full grid of role x clock x vision
+score x dark time x control wards x objective state x tempo phase (and both armed states);
+the pit window is checked against the app's *real* objective clock at every 7 seconds of a
+40-minute game rather than hand-written fixtures; the counterpart matcher is asserted to
+return **nothing** rather than guess whenever the lobby is ambiguous; and the guard is
+driven second-by-second through whole simulated games - a support who wards constantly
+(never accused once), one who stops at 6:40 (caught on the exact second the clock earns
+it), one who never wards at all, a jungler on his own bar, four different death windows
+(the dark clock must freeze, not reset and not accrue), a bought-carried-placed control
+ward, all three laners (total silence), and a game where the feed reports no vision score
+at all (total silence). A 20-shape malformed-payload sweep x every tempo/objective/win-read
+combination must never raise. Two real defects were found and fixed by that sweep before
+release, and every frame the guard produces was rendered through the real widget path and
+inspected.
+
 ## v0.9.67 - THE GOLD CLOCK: your lane, counted against the minions that actually spawned
 
 **New feature, and it covers the biggest leak in your ledger that had nothing in the game

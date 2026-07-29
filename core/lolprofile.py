@@ -572,6 +572,13 @@ _BEHAVIOR_TAGS = {
     "low_vision": "no vision setup",
 }
 
+# Vision score per minute the `low_vision` tag holds each role to. ONE BRAIN: the live WARD
+# CLOCK (core/lolward) reads its bar from here rather than re-typing it, so the review page
+# and the in-game guard can never disagree about what "enough vision" means. Only these two
+# roles are ever evaluated — a laner's vision score has never been graded here and the live
+# surface stays silent for them for exactly that reason.
+VPM_BAR = {"UTILITY": 1.2, "JUNGLE": 0.55}
+
 
 def behavior_read(dd, mid, my_puuid, key, parts, dur):
     """Behavioral ROOT-CAUSE tags for one game, provable from the cached timeline + stat
@@ -619,9 +626,9 @@ def behavior_read(dd, mid, my_puuid, key, parts, dur):
             if t >= 25 * 60 and lead(m) >= 2000:
                 hits.add("threw_ahead")
                 break
-    if pos in ("JUNGLE", "UTILITY"):               # vision setup benchmark (jg/sup only)
+    if pos in VPM_BAR:                             # vision setup benchmark (jg/sup only)
         ev.add("low_vision")
-        if float(mine.get("vision") or 0) / gmins < (1.2 if pos == "UTILITY" else 0.55):
+        if float(mine.get("vision") or 0) / gmins < VPM_BAR[pos]:
             hits.add("low_vision")
     return hits, ev
 
