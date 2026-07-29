@@ -2,21 +2,37 @@
 
 WARNING:  I frequently update Smiteless and sometimes the updates just aren't good.  I usually revert them if its not good as I'm trying completely new ideas, UIs, techniques and more.  So sometimes there'll be an update and it'll be something you just wont like and likely I dont either and I'll either change it or revert it but it can take usually up to 24 hours before I change it back or fine tune it.  The point of Smiteless is extreme researched back evidence on techniques on climbing the absolute fastest.  It may not look like much but under the hood there is extremely extensive research-backed calculations going on behind the scenes including a 1M accounts case study done on what worked and what didn't work to climb.  TLDR 1 version might be shit but just give it two days max and it'll be dialed back in.
 
-**A League of Legends companion that plays the map with you.** It watches champ select and your live game, then tells you the one thing that matters right now — what to ban, when to back, whether that drake fight is winnable, and when to stop queuing.
+**A League of Legends companion built for one thing: climbing as fast as it is possible to climb.** It watches champ select and your live game and tells you the one thing that matters right now — what to ban, when to back, whether that drake fight is winnable, and when to stop queuing — because the fastest climb is a string of decisions made correctly, and almost none of them are made with the information in front of you.
 
 ![The in-game scoreboard](docs/board.png)
 
-## What it lives for
+## What it lives for: SPEED
 
-**One thing: shortening the climb.** Not covering the game — shortening the climb. Anything
-that would merely be *interesting to know* gets cut; what survives is what changes a decision
-you are about to make, in the seconds before you make it.
+**Smiteless exists to get you up the ladder as fast as the ladder can physically be climbed.**
+Not to help you enjoy the game more, not to cover the game comprehensively, not to give you
+something to read after a loss. Speed of rank gain, and nothing else, is the metric every
+feature in here is judged against.
 
-That leads to three rules the whole app is built on:
+That is a much harsher filter than it sounds, and it is applied constantly:
 
-- **It speaks once, or not at all.** Every surface here is allowed to say nothing, and most of
-  them say nothing most of the game. A coach that talks through a losing game, or nags every
-  ninety seconds, is a coach you turn off — and an app you have turned off shortens no climbs.
+- **Every feature has to shorten time-to-rank, or it gets cut.** "Interesting to know" is not a
+  reason to build something. If a surface doesn't change a decision you are about to make, in
+  the seconds before you make it, it isn't earning its place on your screen — and features have
+  been deleted from this app for exactly that.
+- **It goes after the biggest levers first, in order.** Champion-pool discipline, the 2-loss
+  stop rule, and the handful of in-game habits that measurably decide games — because a fast
+  climb comes from fixing the few things that cost the most LP, not from marginally improving
+  everything. Which lever is biggest isn't a guess: it comes out of research including a 1M-game
+  study, and out of your own match history.
+- **Six things done right beat twelve done halfway.** Quality over coverage. A read you can't
+  trust is worse than no read, because acting on a wrong call costs you the game the app was
+  supposed to win.
+
+And three rules that keep it fast in practice:
+
+- **It speaks once, or not at all.** Every surface is allowed to say nothing, and most of them
+  say nothing most of the game. A coach that talks through a losing game, or nags every ninety
+  seconds, is a coach you turn off — and an app you've turned off climbs nothing.
 - **Every claim carries its receipt.** No line tells you a habit is costing you games without
   showing the split *from your own match history* — *"with it: 3W-9L · without: 11W-5L"*. Where
   a number is modelled rather than measured, the source says so out loud.
@@ -29,6 +45,10 @@ Between games, your profile reads each match and tags the habits that actually c
 game. **The direction of this project is simple: every one of those tags gets a live in-game
 surface that fires while the mistake is still preventable** — the review is worth far less
 than the intervention.
+
+This is where the speed actually comes from. A leak isn't one lost game, it's the same lost
+game on repeat — so closing one changes every game you play after it, and that compounding is
+the difference between grinding a rank and arriving at it.
 
 | Your profile tags it | In game, this answers it | When |
 |---|---|---|
