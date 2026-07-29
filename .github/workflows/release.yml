@@ -80,7 +80,20 @@ jobs:
           git commit -m "Release v$env:VER"
           # main FIRST: a version tag is only meaningful once the commit it names is on main,
           # and if this push is going to fail we want it to fail before anything is tagged.
+          #
+          # ...which is what the LASTEXITCODE check is for. pwsh does not fail a step on a
+          # native command's non-zero exit, so for four releases this push could fail and the
+          # workflow sailed on to tag and publish anyway. v0.9.68 is what that looks like: a
+          # sibling session pushed to main mid-run, the fast-forward was rejected, and a
+          # release got published whose commit was on no branch at all. Never silent again —
+          # a rejected push here means somebody moved main under us, and the right answer is
+          # to merge main into the release branch and re-dispatch, not to publish regardless.
           git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) {
+            throw "push to main was REJECTED (main moved under this run?). Nothing has been " +
+                  "tagged or published. Merge origin/main into the release branch, push it, " +
+                  "and re-dispatch this workflow."
+          }
           # Re-running a release whose later steps failed leaves the tag behind pointing at
           # the previous attempt's (now orphaned) commit. Move it onto this attempt instead
           # of dying on "tag already exists" — the release itself was never published, so
