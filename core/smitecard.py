@@ -702,43 +702,49 @@ def queue_prediction(my_cid, scout_map):
 
 
 _DODGE_CACHE = {}
-# Dodge gate - deliberately STRICT (you get ~one free dodge a day, so only call it when the
-# draft is genuinely lost on paper). All four must hold across the known lanes.
-DODGE_MIN_LANES = 4        # need most of the draft locked + sampled before judging
-DODGE_AVG = -3.0           # average lane win-rate delta this far below 50%
-DODGE_LOSING = 3           # at least this many clearly-losing lanes
-DODGE_HARDCOUNTERS = 1     # at least one hard counter (>=6% under)
-DODGE_BEST_CAP = 5.0       # ...and no lane is hard-winning enough to carry the draft
+# your baseline / LP-per-game / game length: one LCU round-trip, warmed OFF-THREAD and
+# reused for the whole session (it only moves when you finish a game, not during a draft).
+_DODGE_CTX = {"v": None, "busy": False, "tries": 0}
 
 
-def dodge_read(dd, allies, enemies):
-    """High-confidence 'consider dodging' read from op.gg lane matchups (champ select).
-    Returns {reason, avg, worst} only when the draft is lost across most lanes; else None.
-    Conservative on purpose - a false dodge costs the user a real, scarce free dodge."""
+def dodge_read(dd, allies, enemies, flags=None, known=0):
+    """THE DODGE CALL (core/loldodge): what this lobby is worth in LP against dodging it.
+
+    Returns loldodge's dict — {verdict: DODGE|PLAY, p, edge, chip, headline, reason, lines} —
+    or None if the engine couldn't answer. The old version of this function was four
+    hard-coded thresholds with no idea what a dodge costs; the engine prices the decision
+    instead. Cached per draft signature because every hover permutation lands here."""
     sig = (tuple(sorted((c, r) for c, r in allies if c and r)),
-           tuple(sorted((c, r) for c, r in enemies if c and r)))
+           tuple(sorted((c, r) for c, r in enemies if c and r)),
+           tuple(sorted(flags or [])), known)
     if sig in _DODGE_CACHE:
         return _DODGE_CACHE[sig]
-    if len(_DODGE_CACHE) > 64:          # every hover permutation lands here; don't grow forever
+    if len(_DODGE_CACHE) > 64:
         _DODGE_CACHE.clear()
-    result = None
     try:
-        rows = lb.gather_lane_matchups(dd, allies, enemies)
+        import loldodge as ldg
+        if _DODGE_CTX["v"] is None:
+            # Your baseline / LP-per-game / game length come off the client's match history —
+            # one LCU round-trip, and it must NEVER sit in the champ-select render loop (same
+            # rule as the personal-fit warm). Kick it off once; until it lands the panel shows
+            # "reading the draft…", and the next 2s frame picks it up.
+            if not _DODGE_CTX["busy"] and _DODGE_CTX["tries"] < 3:
+                _DODGE_CTX["busy"] = True
+                _DODGE_CTX["tries"] += 1
+
+                def _warm():
+                    try:
+                        _DODGE_CTX["v"] = ldg.context()
+                    except Exception:
+                        pass                       # three strikes and the call stays quiet
+                    finally:
+                        _DODGE_CTX["busy"] = False
+                threading.Thread(target=_warm, daemon=True).start()
+            return None                            # not cached: the very next frame retries
+        result = ldg.read(dd, allies, enemies, flags=flags, known=known,
+                          dodges_today=ldg.dodges_today(), ctx=_DODGE_CTX["v"])
     except Exception:
-        rows = []
-    deltas = [(role, ally, enemy, wr - 50.0) for ally, role, enemy, wr, g in rows
-              if wr is not None and g and g >= 20]
-    if len(deltas) >= DODGE_MIN_LANES:
-        ds = [x[3] for x in deltas]
-        avg = sum(ds) / len(ds)
-        losing = sum(1 for v in ds if v <= -3)
-        hard = sum(1 for v in ds if v <= -6)
-        best = max(ds)
-        if avg <= DODGE_AVG and losing >= DODGE_LOSING and hard >= DODGE_HARDCOUNTERS and best < DODGE_BEST_CAP:
-            worst = min(deltas, key=lambda x: x[3])
-            result = {"avg": avg, "losing": losing,
-                      "worst": (worst[1], worst[2], worst[3]),
-                      "reason": f"{losing}/{len(deltas)} lanes behind · worst {worst[1]} vs {worst[2]} ({worst[3]:+.0f}%)"}
+        result = None
     _DODGE_CACHE[sig] = result
     return result
 
@@ -2359,12 +2365,21 @@ def render_cs_vertical(dd, my_cid, my_role, allies, build, suggestions=None, ban
         d.text((78, 44), f"{build['wr']:.1f}%  {build['tier']}", font=display_font(11, True), fill=TEXT)
     _brand_row(d, VW - 12, 6, size=8, anchor="ra")
     y = 92
-    if dodge:
-        # dodge read as a railed card, never inline text (UIDESIGN §5.1): BAD rail + fill.
-        _railed_card(d, (10, y, VW - 10, y + 26), RED, fill=_dim(RED, 0.14), outline=RED, width=1, r=8)
-        d.text((VW // 2, y + 13), "⚠ CONSIDER DODGING — " + str(dodge.get("losing", "")) + " lanes behind",
-               font=font(10, 1, "⚠"), fill=RED, anchor="mm")
-        y += 34
+    if dodge and dodge.get("verdict") == "DODGE":
+        # THE DODGE CALL (core/loldodge) as a railed card, never inline text (UIDESIGN §5.1):
+        # BAD rail + fill, the LP verdict on top and the receipt for it underneath.
+        _railed_card(d, (10, y, VW - 10, y + 44), RED, fill=_dim(RED, 0.14), outline=RED, width=1, r=8)
+        head = "⚠ " + (dodge.get("headline") or "DODGE")
+        d.text((VW // 2, y + 15), head, font=font(11, 1, head), fill=RED, anchor="mm")
+        d.text((VW // 2, y + 32), (dodge.get("reason") or "")[:74],
+               font=font(9), fill=_dim(RED, 0.86), anchor="mm")
+        y += 52
+    elif dodge and dodge.get("chip"):
+        # ...and when it says PLAY it says so QUIETLY, in the same spot every draft, so the
+        # red card is never the first you hear of the read.
+        d.text((VW // 2, y + 8), dodge["chip"], font=font(9),
+               fill=_wr_color(dodge.get("p", 0.5) * 100), anchor="mm")
+        y += 22
     # runes + build card — quiet rail; the import button is THE primary action (ember pill)
     if build:
         card_h = 214 + (20 if rune_note else 0)
@@ -2916,13 +2931,16 @@ def render_image(dd, my_cid, my_role, ally_role, enemy_role, build, lanes, scout
         qx0, qx1 = cxc - (tw / 2) - 10, cxc + (tw / 2) + 10
         _rrect(d, (qx0, 69, qx1, 87), 9, fill=qr["bg"], outline=PEDGE, width=1)
         d.text((cxc, 78), text, font=qf, fill=qr["fill"], anchor="mm")
-    if champ_select and dodge:
-        txt = "⚠ CONSIDER DODGING — " + dodge["reason"]
+    if champ_select and dodge and dodge.get("verdict") == "DODGE":
+        txt = "⚠ " + (dodge.get("headline") or "DODGE") + " — " + (dodge.get("reason") or "")
         bf = font(12, 1, txt)
         tw = d.textlength(txt, font=bf)
         bx0, bx1 = cxc - tw / 2 - 12, cxc + tw / 2 + 12
         _rrect(d, (bx0, 68, bx1, 92), 12, fill=_dim(RED, 0.14), outline=RED, width=1)
         d.text((cxc, 80), txt, font=bf, fill=RED, anchor="mm")
+    elif champ_select and dodge and dodge.get("chip"):
+        d.text((cxc, 80), dodge["chip"], font=font(10),
+               fill=_wr_color(dodge.get("p", 0.5) * 100), anchor="mm")
     if champ_select and build:
         draw_build_block(d, img, dd, cxc + 50, TOP + 16, build, hits=hits)
     # gank scores for every enemy lane FIRST, so labels can be RELATIVE (someone is always
@@ -3184,7 +3202,8 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
     auto_done = 0                         # champ we already auto-imported for (once per lock)
     auto_note = None                      # "auto-imported ✓" note shown on the panel
     last_cs_sig = None                    # champ-select frame signature (skip identical re-renders)
-    team_read = {"state": "idle", "text": ""}   # per-champ-select ally scout (dodge read)
+    # per-champ-select ally scout: the roster line plus the FLAGS that feed the dodge call
+    team_read = {"state": "idle", "text": "", "flags": [], "known": 0}
     shown = False                         # have we rendered a real session (champ select / game)?
     inactive = 0                          # consecutive reads with the client out of an active phase
     acct_captured = False                 # auto-remember the logged-in account once per session
@@ -3205,8 +3224,18 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
         if last_ph == "ChampSelect" and ph not in ("ChampSelect", "GameStart", "InProgress", ""):
             _ovlog(f"champ select aborted -> {ph!r}: state reset, window parked until next draft")
             build, build_cid, auto_done, auto_note, last_cs_sig = None, 0, 0, None, None
-            team_read = {"state": "idle", "text": ""}
+            team_read = {"state": "idle", "text": "", "flags": [], "known": 0}
             dodged = True
+            _DODGE_CACHE.clear()
+            _DODGE_CTX.update(v=None, tries=0)       # your history moved; re-read it
+            try:
+                # If the client is holding a dodge penalty, YOU dodged — and the next dodge
+                # costs 10 LP and 30 minutes instead of 3 and 6, which is most of the answer.
+                import loldodge as _ldg
+                if _ldg.probe_penalty():
+                    _ldg.note_dodge()
+            except Exception:
+                pass
             try:
                 import lolimport as limp
                 limp.ban_watch_update(dd, [], [], False)   # stale targets must not fire next draft
@@ -3413,22 +3442,30 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
                                 import concurrent.futures as _fx
                                 with _fx.ThreadPoolExecutor(max_workers=len(mates)) as _ex:
                                     reads = list(_ex.map(_one, mates))
+                            known = 0
                             for got in reads:
                                 if not got:
                                     continue
+                                known += 1
                                 nm, g, streak, ab = got
                                 roster.append(f"{nm} {ab or '?'}·{g or '?'}"
                                               + (f"·{streak}L" if streak >= 2 else ""))
                                 if streak >= 3:
-                                    flags.append(f"{nm} tilted ({streak}L)")
+                                    flags.append(f"{nm} {streak}L")
                                 elif g == "F":
                                     flags.append(f"{nm} F-grade")
-                            if flags:
-                                team_read["text"] = "⚠ DODGE READ: " + " · ".join(flags[:3])
-                            elif roster:                   # clean lobby -> still show the scout
-                                team_read["text"] = "team: " + "  ".join(roster[:4])
-                            else:
-                                team_read["text"] = ""
+                            # The scout no longer shouts "DODGE READ" on its own. A flag is
+                            # only evidence to the extent it beats what the ENEMY team (which
+                            # you can't see in champ select) is carrying, so the flags go to
+                            # loldodge and the running base rate learns from this lobby too.
+                            team_read["flags"], team_read["known"] = flags, known
+                            if known:
+                                try:
+                                    import loldodge as _ldg
+                                    _ldg.observe(known, len(flags))
+                                except Exception:
+                                    pass
+                            team_read["text"] = ("team: " + "  ".join(roster[:4])) if roster else ""
                         except Exception:
                             team_read["text"] = ""
                         team_read["state"] = "done"
@@ -3452,7 +3489,8 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
                        tuple(sorted((c, r) for c, r in enemies if c)), bool(build),
                        tuple(bans_my), tuple(bans_their),
                        bool(settings.get("auto_import", False)), bool(settings.get("auto_ban", False)),
-                       auto_note, climb_note, team_read["text"], get_rune_idx())
+                       auto_note, climb_note, team_read["text"],
+                       tuple(team_read.get("flags") or ()), get_rune_idx())
                 if sig != last_cs_sig:
                     # WHAT'S GOOD THIS GAME — the same call the web DraftBoard makes (fam=None):
                     # counters into the locked enemies + comp fit, ranked on merit alone.
@@ -3508,8 +3546,11 @@ def run(emit, count=None, wait=False, stop=None, monitor=False):
                     except Exception:
                         pass
                     sugg = sugg[:5]
-                    # High-confidence dodge read from op.gg lane matchups once enough enemies lock.
-                    dodge = dodge_read(dd, allies, enemies) if settings.get("dodge_alerts", True) else None
+                    # THE DODGE CALL (core/loldodge): the draft priced in LP against what a
+                    # dodge costs you, sharpened by the flags the ally scout found.
+                    dodge = (dodge_read(dd, allies, enemies, flags=team_read.get("flags"),
+                                        known=team_read.get("known", 0))
+                             if settings.get("dodge_alerts", True) else None)
                     if settings.get("dock_champ_select", True):
                         # tall panel that docks LEFT of the client (the overlay parks it there
                         # and nudges the client right if there's no room)

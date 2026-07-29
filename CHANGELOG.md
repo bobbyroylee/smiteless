@@ -1,5 +1,57 @@
 ﻿# Smiteless â€” Patch Notes
 
+## v0.9.66 - THE DODGE CALL: your lobby, priced in LP
+
+- **New: every champ select now tells you what the lobby is worth, in LP.** A quiet line sits
+  under your champion for the whole draft:
+
+      LOBBY 52%  -  +2.9 LP  -  PLAY
+
+  That is this game's win probability, what playing it is worth on average, and the verdict. It
+  turns red and becomes a card when the answer changes:
+
+      DODGE - worth +2.8 LP vs playing it
+      5/5 lanes behind - worst Yasuo vs Malzahar (-11%) - Kayn 4L, Ashe F-grade
+
+- **Why this replaces the old "consider dodging" banner.** That banner fired on four numbers
+  somebody picked by hand - average lane delta under -3, three losing lanes, one hard counter -
+  and it had no idea what a dodge actually costs. A dodge that saved you 1 LP and a dodge that
+  saved you 12 looked identical, and a merely unlucky-looking draft got treated like a lost one.
+- **The new call answers the real question: you have the next hour either way - which branch
+  ends with more LP in it?** Play this lobby, or eat the penalty and play a fresh one. Every
+  number in that sum is yours:
+    - **your own LP per win and per loss**, read off your rank history. If you are getting +22
+      and losing -18, it uses that, not the folklore 20/20.
+    - **the median length of your own games**, because the dodge timer is paid in games you do
+      not get to play.
+    - **Riot's real penalties** - 3 LP and 6 minutes for the first dodge of the day, 10 LP and
+      30 minutes for the second.
+- **And that last one produces the finding I did not expect: the second dodge is basically
+  never worth it.** The first fires on a draft losing every lane by about 5 points. The second
+  would need every lane down 15 - a lobby that does not exist. So Smiteless will now tell you to
+  play a 36% game and show you why: *"LOBBY 36% - -3.6 LP - PLAY, dodging costs 6.2 LP more."*
+  One free dodge a day is real. The second is a trap, and now you can see it.
+- **Drafts are read properly now.** The old banner AVERAGED the five lane win rates, which is
+  wrong - op.gg's "Yasuo vs Malzahar 45%" is already a whole-game number, so a draft losing all
+  five lanes is far worse than one losing a single lane, not the same. The lanes now compose the
+  way independent effects actually compose, then get halved on purpose so a noisy read can never
+  carry a dodge on its own.
+- **The tilt read stopped shouting.** The ally scout used to flag a teammate on a 3-loss streak
+  and yell DODGE READ - having never once considered that the enemy team, which you cannot see
+  in champ select, has tilted players in it at exactly the same rate. So Smiteless now MEASURES
+  that rate from every lobby it scouts, and a flag only counts for the amount it beats the other
+  team's expected share: *"Kayn 4L, Ashe F-grade - 2 flagged of 5 read, vs 0.6 expected on any
+  team."* Your own loss streak counts too, since you are the fifth player on that team.
+- **A tilted lobby can never dodge on its own.** The lobby read is capped by design - it can
+  sharpen a draft that is already losing, never call one. Under 40 players scouted it makes no
+  claim at all and the draft speaks alone.
+- **Nothing here dodges for you** and nothing touches your client. It puts a number on the
+  button you were already deciding whether to press.
+- Settings calls it **The Dodge Call** now (Champ-select automation). The self-test pins all of
+  it: which lobbies dodge and which stay silent, that the call moves the right way as the draft
+  worsens, that the second dodge is a strictly harder bar than the first, and that thin samples
+  make no claim.
+
 ## v0.9.65 - runes adapt to the lobby, not just the champion
 
 - **Auto-import now picks the rune page that fits THIS game.** It always took op.gg's

@@ -380,7 +380,7 @@ def main():
         ("Auto-accept queue", autoq),
         ("Auto-import runes + summs on lock", autoimp),
         ("Auto-ban (perma-ban list first)", autoban),
-        ("Dodge alerts", dodge),
+        ("The Dodge Call (lobby priced in LP)", dodge),
         ("Live draft link (URL in chat)", draftlink),
         ("Also open the draft board for me", draftopen),
     ])

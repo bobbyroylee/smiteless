@@ -42,7 +42,8 @@ discipline is the highest-confidence lever in ranked and this enforces it rather
 it. **STAND DOWN** releases the lock and leaves the reads on.
 
 ### 🧠 In champ select
-- **Scouts everyone live** — rank, form, player grades (S–F from how they actually *play*), duo detection, and a **dodge read** that flags tilted or struggling teammates *while you can still dodge*
+- **Scouts everyone live** — rank, form, player grades (S–F from how they actually *play*), duo detection, and the flags that feed the Dodge Call *while you can still dodge*
+- **The Dodge Call** — the lobby priced in LP, not in vibes. A quiet line under your champ says what this game is worth (*"LOBBY 52% · +2.9 LP · PLAY"*), and turns into a red card only when walking away actually pays: *"⚠ DODGE — worth +2.8 LP vs playing it · 5/5 lanes behind · worst Yasuo vs Malzahar (-11%)"*. It uses **your** LP per win and per loss, **your** median game length, and Riot's real penalties — which is how it can tell you the second dodge of the day (10 LP, 30 minutes) is almost never worth taking. Tilted teammates only count for the amount they beat the rate the enemy team carries them at, measured from every lobby it has scouted
 - **Smart bans** — ranked by who threatens your whole team's hovers, weighted by pick rate, with optional **auto-ban** that waits until the last seconds for maximum hover intel
 - **Real matchup tips** — written by actual guide authors for your exact matchup, not AI
 - **The live draft link** — posts one URL into lobby chat; teammates who click it get a live web board of the draft with pick suggestions + runes for their seat, no install needed ([setup](docs/DRAFTLINK.md), $0 to run)

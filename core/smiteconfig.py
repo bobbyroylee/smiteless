@@ -95,7 +95,8 @@ BOOLS = {"matchup_tips": True,    # generate the AI lane tip in champ-select/in-
                                     #   card board, so the gate reads this key, not the old one.
          "loading_overlay": False,  # LEGACY / ignored — superseded by `loading_scout` above.
          "queue_call": True,      # LOBBY: the pre-queue stop/go verdict card (core/lolqueue)
-         "dodge_alerts": True,    # champ select: high-confidence "consider dodging" banner
+         "dodge_alerts": True,    # champ select: THE DODGE CALL — this lobby priced in LP
+                                  # against what a dodge costs you (core/loldodge)
          "dock_champ_select": True,  # champ select helper docks as a tall panel LEFT of the client
          "board_topmost": True,   # live board/scoreboard stays above other windows (untick to allow covering)
          "auto_import": False,    # import runes+summs AUTOMATICALLY when you lock a champ

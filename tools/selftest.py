@@ -291,6 +291,94 @@ def c_runes():
     return OK, "switches only on a clear comp, cites op.gg's own sample, ignores thin pages"
 
 
+def c_dodge():
+    """THE DODGE CALL: the lobby priced in LP against what a dodge costs. Wrong here is
+    expensive in both directions — a false DODGE burns 3 LP and six minutes on a game you'd
+    have won, a missed one hands over a game that was already lost. So every branch is
+    pinned, including the ones that must stay SILENT."""
+    import loldodge as ld
+    bad = []
+    want = {"dodge": "DODGE",       # every lane behind + a tilted lobby -> walk
+            "play": "PLAY",         # the draft is yours
+            "even": "PLAY",         # slightly down is NOT worth 3 LP
+            "second": "PLAY",       # same lost draft, but dodge #2 costs 10 LP + 30 min
+            "flags-only": "PLAY",   # a tilted lobby alone must never call a dodge
+            "nobase": "DODGE",      # no flag base rate yet -> the draft still speaks
+            "thin": None}           # draft not sampled -> no opinion at all
+    for k, v in want.items():
+        ctx, draft, lob, dt = ld.demo(k)
+        r = ld.call(ctx, draft, lob, dt)
+        if r["verdict"] != v:
+            bad.append(f"{k}: {r['verdict']} (want {v})")
+        elif v and not r["lines"]:
+            bad.append(f"{k}: a verdict with no evidence line")
+
+    def rows(wrs, games=140):
+        lanes = [("A", "top", "a"), ("B", "jungle", "b"), ("C", "mid", "c"),
+                 ("D", "adc", "d"), ("E", "support", "e")]
+        return [(al, r, en, wr, games) for (al, r, en), wr in zip(lanes, wrs)]
+
+    ctx = ld.demo("play")[0]
+    # gates: no read off too few lanes, or off samples too thin to mean anything
+    if ld.draft_edge(rows([45, 45, 45])) is not None:
+        bad.append("judged a draft off 3 lanes")
+    if ld.draft_edge(rows([45] * 5, games=5)) is not None:
+        bad.append("judged a draft off 5-game lane samples")
+    if ld.flag_rate({"seen": ld.MIN_SCOUTED - 1, "flagged": 9})[0] is not None:
+        bad.append("claimed a flag base rate under MIN_SCOUTED")
+    # the lobby term is capped and can never dodge on its own, however tilted the lobby
+    for n in range(6):
+        lob = ld.lobby_edge([f"P{i} 4L" for i in range(n)], 5, 0.10)
+        if abs(lob["pp"]) > ld.LOBBY_CAP + 1e-9:
+            bad.append(f"lobby term broke its cap at {n} flags")
+        if ld.call(ctx, ld.draft_edge(rows([50] * 5)), lob, 0)["verdict"] != "PLAY":
+            bad.append(f"{n} flags dodged an even draft")
+    # monotone in the draft, clamped, and the second dodge is a strictly harder bar
+    first = second = None
+    prev = None
+    for tenths in range(0, -200, -1):
+        d = ld.draft_edge(rows([50 + tenths / 10.0] * 5))
+        r1, r2 = ld.call(ctx, d, None, 0), ld.call(ctx, d, None, 1)
+        if prev and (r1["p"] > prev["p"] + 1e-9 or r1["edge"] < prev["edge"] - 1e-9):
+            bad.append(f"not monotone in the draft at {tenths / 10.0}pp")
+        if not (ld.P_FLOOR - 1e-9 <= r1["p"] <= ld.P_CEIL + 1e-9):
+            bad.append(f"win probability escaped its clamp: {r1['p']}")
+        if r2["verdict"] == "DODGE" and r1["verdict"] == "PLAY":
+            bad.append(f"dodge #2 fired where #1 wouldn't ({tenths / 10.0}pp)")
+        if r1["verdict"] == "DODGE" and first is None:
+            first = tenths / 10.0
+        if r2["verdict"] == "DODGE" and second is None:
+            second = tenths / 10.0
+        prev = r1
+    if first is None:
+        bad.append("no draft on earth triggers a first dodge")
+    # the EV identity the whole call rests on
+    r = ld.call(ctx, ld.draft_edge(rows([44] * 5)), None, 0)
+    ev = r["p"] * ctx["win_lp"] - (1 - r["p"]) * ctx["loss_lp"]
+    tg, td = ctx["game_min"], r["penalty_min"] + ld.REQUEUE_MIN
+    if abs(r["edge"] - (-r["cost"] - ev + r["ev_next"] * (tg - td) / tg)) > 1e-9:
+        bad.append("the LP identity no longer holds")
+    # your own LP per win/loss, read off rank snapshots — and honest when it can't be
+    h, rv, w, l = [{"ts": -1, "rv": 1200, "w": 40, "l": 30}], 1200, 40, 30
+    for i in range(20):
+        win = i % 2 == 0
+        rv += 21 if win else -17
+        w, l = w + (1 if win else 0), l + (0 if win else 1)
+        h.append({"ts": i, "rv": rv, "w": w, "l": l})
+    wl, ll, _n, meas = ld.stakes(h)
+    if not (meas and abs(wl - 21) < 1e-9 and abs(ll - 17) < 1e-9):
+        bad.append(f"LP per game misread: +{wl}/-{ll} measured={meas}")
+    if ld.stakes([{"ts": 0, "rv": 1000, "w": 10, "l": 10},
+                  {"ts": 1, "rv": 1042, "w": 12, "l": 10}])[3]:
+        bad.append("priced a two-game gap as one game")
+    if ld.stakes([])[3]:
+        bad.append("claimed measured LP stakes with no history")
+    if bad:
+        return FAIL, "; ".join(bad[:4])
+    return OK, (f"prices the lobby in LP; first dodge needs {first}pp per lane, "
+                f"second {second if second is not None else 'never'}")
+
+
 def c_maxelo():
     """MAX ELO arms a list of setting keys by name. A typo there is invisible - the switch
     would look armed and quietly leave a feature off - so every key must be a real toggle."""
@@ -424,6 +512,7 @@ def main():
         ("Auto-mute input guard", c_muteguard),
         ("Personal fit (your results)", c_fit),
         ("Adaptive runes (comp-aware)", c_runes),
+        ("Dodge call (LP math)", c_dodge),
         ("MAX ELO (one-switch arming)", c_maxelo),
         ("MAX ELO auto-lock (draft)", c_autolock),
         ("League client / LCU", c_lcu),
