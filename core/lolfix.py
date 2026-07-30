@@ -205,7 +205,6 @@ def _row(rows, tag, n_total, lp_swing, base=0.5):
     out = {"tag": tag, "short": meta["short"], "label": meta["label"], "fix": meta["fix"],
            "guard": meta["guard"], "n_ev": len(ev), "n_hit": len(hit),
            "rate": (len(hit) / len(ev)) if ev else 0.0,
-           "per10": round(10.0 * len(hit) / n_total, 1) if n_total else 0.0,
            "lp10": 0.0, "gap": 0.0, "z": 0.0, "evidence": "", "state": "thin",
            "need": max(0, MIN_EV - len(ev)),
            "recent": [tag in (g.get("hits") or []) for g in ev[-RECENT_N:]][::-1],
