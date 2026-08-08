@@ -20,6 +20,7 @@ import lolprofile as lp
 import lolscout as ls
 import smitecard as sc
 import smiteconfig as cfg
+from smitei18n import t
 
 import smiteskin as skin
 _kernel32 = ctypes.windll.kernel32
@@ -60,7 +61,7 @@ def _accounts_popup(root):
             pass
     win = tk.Toplevel(root)
     _accounts_popup._win = win
-    win.title("Riot logins")
+    win.title(t("Riot logins"))
     win.configure(bg=skin.VOID)
     skin.dark_titlebar(win)
     win.resizable(False, False)
@@ -100,7 +101,7 @@ def _accounts_popup(root):
             w.destroy()
         nm = lc.names()
         if not nm:
-            tk.Label(listwrap, text="No accounts yet — add one below.", bg=skin.VOID,
+            tk.Label(listwrap, text=t("No accounts yet — add one below."), bg=skin.VOID,
                      fg=skin.FAINT, font=skin.body(skin.SMALL)).pack(anchor="w", pady=4)
         for name in nm:
             row = skin.card(listwrap, rail=skin.LINE)
@@ -109,7 +110,7 @@ def _accounts_popup(root):
                      font=skin.body(skin.BODY, bold=True)).pack(side="left", padx=12, pady=6)
             skin.button(row.body, "✕", (lambda n=name: (lc.remove(n), _refresh())),
                         size=skin.SMALL).pack(side="right", padx=(0, 8))
-            skin.button(row.body, "Log in", (lambda n=name: _do_login(n)),
+            skin.button(row.body, t("Log in"), (lambda n=name: _do_login(n)),
                         primary=True, size=skin.SMALL).pack(side="right", padx=6)
 
     skin.section_rule(win, "ADD / UPDATE ACCOUNT").pack(fill="x", padx=18, pady=(12, 2))
@@ -128,7 +129,7 @@ def _accounts_popup(root):
     e_user = _field("Riot username (not the Riot ID)")
     e_pass = _field("Password", show="•")
     showpw = tk.BooleanVar(value=False)
-    tk.Checkbutton(fb, text="show password", variable=showpw, bg=skin.SURFACE, fg=skin.MUTED,
+    tk.Checkbutton(fb, text=t("show password"), variable=showpw, bg=skin.SURFACE, fg=skin.MUTED,
                    selectcolor=skin.SUNKEN, activebackground=skin.SURFACE, activeforeground=skin.MUTED,
                    font=skin.body(skin.SMALL), bd=0, highlightthickness=0,
                    command=lambda: e_pass.config(show="" if showpw.get() else "•")).pack(anchor="w", padx=8)
@@ -143,7 +144,7 @@ def _accounts_popup(root):
             _set_status(str(e), skin.BAD)
     btns = tk.Frame(fb, bg=skin.SURFACE)
     btns.pack(fill="x", padx=8, pady=(4, 8))
-    skin.button(btns, "Save account", _save, primary=True).pack(side="left", padx=4)
+    skin.button(btns, t("Save account"), _save, primary=True).pack(side="left", padx=4)
     e_pass.bind("<Return>", lambda e: _save())
     status.pack(anchor="w", padx=16, pady=(6, 12))
     _refresh()
@@ -177,7 +178,7 @@ def main():
 
     root = tk.Tk()
     cfg.watch_tray(root)                        # close with the tray (no orphan profile window)
-    root.title("Smiteless — Profile")
+    root.title(f"Smiteless — {t('Profile')}")
     root.configure(bg=skin.VOID)
     skin.dark_titlebar(root)
     try:
@@ -215,7 +216,7 @@ def main():
     canvas = tk.Canvas(body, bg=skin.VOID, highlightthickness=0, yscrollcommand=vbar.set, width=sc.PW)
     canvas.pack(side="left", fill="both", expand=True)
     vbar.config(command=canvas.yview)
-    canvas.create_text(sc.PW // 2, 60, text="loading your match history…", fill=skin.MUTED, font=skin.body(12))
+    canvas.create_text(sc.PW // 2, 60, text=t("loading your match history…"), fill=skin.MUTED, font=skin.body(12))
 
     # Two-row bottom area so nothing crowds: buttons row on top, status line below it.
     # (One row squeezed the dynamically-shown back button to zero width and mashed Save card.)
@@ -225,7 +226,7 @@ def main():
     status.pack(fill="x", padx=14, pady=(0, 6))
     bar = tk.Frame(root, bg=skin.SURFACE)
     bar.pack(side="bottom", fill="x")
-    backbtn = tk.Button(bar, text="← back", bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
+    backbtn = tk.Button(bar, text=t("← back"), bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
                         activeforeground=skin.EMBER, relief="flat", font=skin.body(skin.SMALL, bold=True),
                         padx=12, pady=4, cursor="hand2")
     search = tk.Entry(bar, bg=skin.SUNKEN, fg=skin.TXT, insertbackground=skin.TXT, relief="flat",
@@ -233,24 +234,24 @@ def main():
     search.pack(side="left", padx=(12, 2), pady=7, ipady=3)
     search.insert(0, "Name#TAG")
     search.bind("<FocusIn>", lambda e: (search.delete(0, "end") if search.get() == "Name#TAG" else None))
-    gobtn = skin.button(bar, "Search", None, size=skin.SMALL)
+    gobtn = skin.button(bar, t("Search"), None, size=skin.SMALL)
     gobtn.pack(side="left", padx=(2, 6), pady=7)
 
     def _open_logins():
         _accounts_popup(root)
-    loginbtn = tk.Button(bar, text="⚡ Log in", bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
+    loginbtn = tk.Button(bar, text=t("⚡ Log in"), bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
                          activeforeground=skin.EMBER, relief="flat", font=skin.body(skin.SMALL, bold=True),
                          padx=12, pady=4, cursor="hand2", command=_open_logins)
     loginbtn.pack(side="left", padx=(0, 6), pady=7)
     loginbtn.bind("<Enter>", lambda e: loginbtn.config(bg=skin.HOVER))
     loginbtn.bind("<Leave>", lambda e: loginbtn.config(bg=skin.RAISED))
-    loadbtn = skin.button(bar, "Load more", None, size=skin.SMALL)
+    loadbtn = skin.button(bar, t("Load more"), None, size=skin.SMALL)
     loadbtn.config(state="disabled")
     loadbtn.pack(side="right", padx=12, pady=7)
-    savebtn = skin.button(bar, "Save card", None, size=skin.SMALL)
+    savebtn = skin.button(bar, t("Save card"), None, size=skin.SMALL)
     savebtn.config(state="disabled")
     savebtn.pack(side="right", padx=(0, 4), pady=7)
-    refreshbtn = tk.Button(bar, text="⟳ Refresh", bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
+    refreshbtn = tk.Button(bar, text=t("⟳ Refresh"), bg=skin.RAISED, fg=skin.EMBER, activebackground=skin.HOVER,
                            activeforeground=skin.EMBER, relief="flat", font=skin.body(skin.SMALL, bold=True),
                            padx=12, pady=4, cursor="hand2", state="disabled")
     refreshbtn.pack(side="right", padx=(0, 4), pady=7)
@@ -493,9 +494,9 @@ def main():
         import tkinter as tk
         tips = list(game.get("review") or [])
         kind = game.get("review_kind", "improve")
-        head = "What you did well" if kind == "positive" else "3 things to improve"
+        head = t("What you did well") if kind == "positive" else t("3 things to improve")
         win = tk.Toplevel(root)
-        win.title("Smiteless — Full review")
+        win.title(f"Smiteless — {t('Full review')}")
         win.configure(bg=skin.VOID)
         skin.dark_titlebar(win)
         win.minsize(560, 360)
@@ -512,7 +513,7 @@ def main():
         tx.pack(side="left", fill="both", expand=True)
         sb.config(command=tx.yview)
         if not tips:
-            tips = ["No review available yet."]
+            tips = [t("No review available yet.")]
         for i, t in enumerate(tips, 1):
             tx.insert("end", f"{i}. {t}\n\n")
         tx.config(state="disabled")

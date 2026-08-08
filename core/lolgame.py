@@ -307,3 +307,80 @@ def resolve(dd, allow_unlocked=False):
             return info, None
     return None, ("No live game found — open champ select, be on the loading screen / "
                   "in-game, or watch a replay (all work).")
+
+
+def coach_snapshot(dd, info=None):
+    """Bounded draft/loading shape for the coach; never exposes account identifiers."""
+    if info is None:
+        info, _err = resolve(dd, allow_unlocked=True)
+    if not info:
+        return None
+
+    def champion(cid):
+        try:
+            return (dd.get("id2name") or {}).get(int(cid)) or "unknown"
+        except (TypeError, ValueError):
+            return "unknown"
+
+    def slots(rows):
+        out = []
+        ally_n = 0
+        for row in (rows or [])[:5]:
+            cid, role = (row if isinstance(row, (list, tuple)) else (row, ""))[:2]
+            is_self = not any(item.get("slot") == "self" for item in out) and (
+                cid == info.get("my") and (not info.get("pos") or role == info.get("pos")))
+            if not is_self:
+                ally_n += 1
+            out.append({"slot": "self" if is_self else f"ally_{ally_n}",
+                        "champion": champion(cid), "role": str(role or "")[:12]})
+        return out
+
+    def enemies(rows):
+        return [{**row, "slot": f"enemy_{index}"}
+                for index, row in enumerate(slots(rows), 1)]
+
+    snap = {
+        "role": str(info.get("pos") or "")[:12],
+        "self_champion": champion(info.get("my")),
+        "allies": slots(info.get("allies")),
+        "enemies": enemies(info.get("enemies")),
+        "source": str(info.get("source") or "")[:32],
+    }
+    mastery = _MASTERY_CACHE.get("data") or {}
+    points = _MASTERY_CACHE.get("pts") or {}
+    if info.get("my") in mastery or info.get("my") in points:
+        snap["self_mastery"] = {"level": mastery.get(info.get("my"), 0),
+                                "points": points.get(info.get("my"), 0)}
+    if info.get("phase") == "ChampSelect":
+        snap.update({
+            "locked": bool(info.get("locked")),
+            "ally_bans": [champion(cid) for cid in (info.get("bans_my") or [])[:5]],
+            "enemy_bans": [champion(cid) for cid in (info.get("bans_their") or [])[:5]],
+        })
+    return snap
+
+
+def coach_lifecycle():
+    """Best-effort stable lobby/game identifiers; credentials never leave this function."""
+    lc = _lcu()
+    if not lc:
+        return {}
+    port, hdr = lc
+    hints = {}
+    try:
+        session = lb.http(f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
+                          headers=hdr, timeout=1, insecure=True) or {}
+        game = session.get("gameData") or {}
+        if game.get("gameId") not in (None, ""):
+            hints["game_id"] = game["gameId"]
+    except Exception:
+        pass
+    if not hints:
+        try:
+            lobby = lb.http(f"https://127.0.0.1:{port}/lol-lobby/v2/lobby",
+                            headers=hdr, timeout=1, insecure=True) or {}
+            if lobby.get("partyId"):
+                hints["lobby_id"] = lobby["partyId"]
+        except Exception:
+            pass
+    return hints

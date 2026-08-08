@@ -92,7 +92,42 @@ Find Match. Here is the whole in-game HUD, one panel per guard:
 
 **[Download SmitelessSetup.exe](https://github.com/bobbyroylee/smiteless/releases/latest)** → double-click → Install. No Python, no setup — everything's bundled. Windows 10/11, League in **Borderless** mode. Full walkthrough (including the free Riot-key setup): **[INSTALL.md](INSTALL.md)**.
 
-It lives in your tray (gold **S**), opens itself at champ select and in-game, and keeps itself updated. Hotkeys: **Ctrl+Alt+X** overlay · **Ctrl+Alt+B** widget.
+It lives in your tray (gold **S**), opens itself at champ select and in-game, and keeps itself updated. Hotkeys: **Ctrl+Alt+X** overlay · **Ctrl+Alt+B** widget · **Ctrl+Alt+C** voice coach (press again to cancel).
+
+### Voice coach, privacy, and local Whisper
+
+The optional coach follows you from before queue through post-game. Ask in English or Brazilian
+Portuguese and it answers in the selected UI language, on screen and through the matching voice
+(`Salli` for English, `Camila` for PT-BR). Claude or Codex must already be installed and signed in;
+Settings selects exactly one provider and Smiteless never silently fails over to the other.
+
+- **Consent first.** Manual voice and proactive coaching are separate opt-ins and both default to
+  off. Text history stays in memory. Raw microphone audio is a bounded temporary WAV deleted after
+  every success, failure, timeout or cancellation; it is never uploaded to a speech API.
+- **Only current, minimized context leaves the app.** Smiteless sends phase-legal, redacted facts to
+  the selected local CLI. It strips credentials, PUUIDs, Riot IDs and local paths, anonymizes other
+  players, and labels account-history evidence separately from this-game performance. A bounded
+  read-only discovery harness may retrieve one allowlisted Smiteless source; it has no shell,
+  filesystem, browser, LCU-write or general MCP capability.
+- **Whisper is local after one download.** The multilingual `small` model is downloaded only after
+  confirmation, hash-validated, and shared at `%LOCALAPPDATA%\Smiteless\models\whisper-small`.
+  Model weights are not bundled in the installer. Complete uninstall removes this shared cache, so
+  source or a later reinstall must download it again.
+- **CPU is the safe default:** `int8`. NVIDIA GPU is explicit and requires compatible CUDA 12
+  cuBLAS plus cuDNN 9; failure never falls back silently to CPU. **Keep loaded** gives faster warm
+  turns; **per question** releases RAM/VRAM after each answer. Settings shows model, device, compute
+  type and worker state and provides **Unload model now**.
+- **Proactive remains sparse and optional.** It reacts only to high-value draft, loading, live and
+  post-game transitions, stays silent during Loading clock zero, and yields to manual conversation
+  and deterministic alerts. **Mute for this game** does not disable the manual coach; reset clears
+  only the in-memory conversation.
+
+Troubleshooting: confirm the chosen Claude/Codex CLI is logged in; check the Settings readiness
+summary; keep a Windows default microphone selected; retry or validate a missing/corrupt model;
+select CPU when NVIDIA/CUDA is unavailable; use **Unload model now** after changing device/policy;
+and restart the tray if coordinator status is unavailable. Offline TTS uses a matching installed
+Windows voice when the online renderer is unreachable; if no matching culture exists, the text
+answer remains available without speaking through the wrong language.
 
 ## What it does
 

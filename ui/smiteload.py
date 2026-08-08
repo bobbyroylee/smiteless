@@ -29,6 +29,7 @@ import lolload as ll
 import lolgame as lg
 import smiteconfig as cfg
 import smiteskin as skin
+from smitei18n import t, tf
 # reuse the death overlay's window plumbing + drawing helpers (one source of truth)
 from smitedead import (_wfont, _dfont, _wrap, _card, _make_click_through, game_monitor,
                        CHROMA_HEX, C_TXT, C_MUTED, C_FAINT, C_EMBER, C_ARC, C_GOOD, C_BAD,
@@ -159,15 +160,18 @@ def _carry_call(allies):
         return None
     ev = ""                                      # cite the evidence, same rule as the tags
     for txt, _tone in (best.get("tags") or []):
-        if any(w in txt for w in ("OTP", "main", "carries", "heater", "comfort", "climbing")):
+        if any(w in txt for w in ("OTP", "main", "carries", "heater", "comfort", "climbing",
+                                  "principal", "carrega", "sequência", "conforto", "subindo")):
             ev = txt
             break
     if best.get("me"):
-        return ("YOU'RE THE WIN CONDITION" + (f" — {ev}" if ev else " — play for your own tempo"),
-                C_EMBER)
+        return (tf("YOU'RE THE WIN CONDITION — {evidence}", evidence=ev) if ev
+                else t("YOU'RE THE WIN CONDITION — play for your own tempo"), C_EMBER)
     nm = (best.get("player") or "").split("#")[0] or best.get("champ", "")
-    return (f"PLAY FOR {best['champ'].upper()}" + (f" ({nm})" if nm else "")
-            + (f" — {ev}" if ev else ""), C_GOOD)
+    return (tf("PLAY FOR {champ} ({name}) — {evidence}",
+               champ=best["champ"].upper(), name=nm, evidence=ev) if nm and ev
+            else tf("PLAY FOR {champ} ({name})", champ=best["champ"].upper(), name=nm)
+            if nm else tf("PLAY FOR {champ}", champ=best["champ"].upper()), C_GOOD)
 
 
 def _rank_str(rk):
@@ -340,7 +344,8 @@ def _player_card(img, d, dd, r, x, y, cw, ch, g, side_col, scouted):
     # ---- identity: champ name, summoner name, role · damage ----
     row_scouted = bool(r.get("scouted"))
     player = r.get("player") or ""
-    nm = player.split("#")[0] if player else ("scouting…" if not row_scouted else "account hidden")
+    nm = player.split("#")[0] if player else (t("scouting…") if not row_scouted
+                                              else t("account hidden"))
     champ = (r.get("champ") or "?").upper()
     nf = _dfont(S(20))
     d.text((cxc + S(1), iy + S(1)), champ, font=nf, fill=C_VOID, anchor="mm")   # shadow
@@ -359,7 +364,8 @@ def _player_card(img, d, dd, r, x, y, cw, ch, g, side_col, scouted):
     if n:
         wr = round(w / n * 100)
         d.text((x + S(10), sy), f"{wr}%", font=_dfont(S(21)), fill=sc._wr_color(wr))
-        d.text((x + S(10), sy + S(24)), f"{w}W {n - w}L", font=_wfont(S(10)), fill=C_MUTED)
+        d.text((x + S(10), sy + S(24)), tf("{wins}W {losses}L", wins=w, losses=n - w),
+               font=_wfont(S(10)), fill=C_MUTED)
         if r.get("kdar") is not None:
             d.text((x + cw - S(10), sy + S(2)), f"{r['kdar']}", font=_dfont(S(19)),
                    fill=C_TXT, anchor="ra")
@@ -376,14 +382,17 @@ def _player_card(img, d, dd, r, x, y, cw, ch, g, side_col, scouted):
                 bx += bw2 + bg2
         if r.get("cg"):
             cwn = r["cw"]
-            d.text((cxc, sy + S(59)), f"{cwn}-{r['cg'] - cwn} on {r.get('champ') or '?'}",
+            d.text((cxc, sy + S(59)),
+                   tf("{wins}-{losses} on {champ}", wins=cwn, losses=r["cg"] - cwn,
+                      champ=r.get("champ") or "?"),
                    font=_wfont(S(10), True),
                    fill=(C_GOOD if cwn * 2 >= r["cg"] else C_BAD), anchor="mm")
         elif row_scouted:
-            d.text((cxc, sy + S(59)), "champ not in recents", font=_wfont(S(9)),
+            d.text((cxc, sy + S(59)), t("champ not in recents"), font=_wfont(S(9)),
                    fill=C_FAINT, anchor="mm")
     elif row_scouted:
-        d.text((cxc, sy + S(20)), "no recent ranked", font=_wfont(S(11)), fill=C_FAINT, anchor="mm")
+        d.text((cxc, sy + S(20)), t("no recent ranked"), font=_wfont(S(11)),
+               fill=C_FAINT, anchor="mm")
     # a row still being read says so once, in the name slot ("scouting…") — no second placeholder
 
     # ---- tag pills: as many rows as fit between the read and the damage bar ----
@@ -440,24 +449,24 @@ def render_frame(dd, b, W, H):
     except Exception:
         pass
     d.text((gx0 + S(28), hy), "SMITELESS", font=_dfont(S(22)), fill=C_EMBER)
-    d.text((gx0 + S(178), hy + S(5)), "LOADING SCOUT", font=_dfont(S(15)), fill=C_MUTED)
+    d.text((gx0 + S(178), hy + S(5)), t("LOADING SCOUT"), font=_dfont(S(15)), fill=C_MUTED)
     call = _carry_call(allies) if scouted else None
     if call:
         sub, scol = call
     else:
-        sub, scol = ("reading the ten accounts…" if not scouted
-                     else "who they are, before minute one"), C_FAINT
+        sub, scol = (t("reading the ten accounts…") if not scouted
+                     else t("who they are, before minute one")), C_FAINT
     sf = _wfont(S(13), True)
     d.text((gx0 + grid_w, hy + S(4)), sub, font=sf, fill=scol, anchor="ra")
 
     # ---------- team labels + card rows ----------
     row_y = [g["grid_top"], g["grid_top"] + ch + row_gap]
     for row_i, (team, title, tcol, side_col) in enumerate((
-            (allies, "YOUR TEAM", C_GOOD, C_GOOD), (enemies, "ENEMY TEAM", C_BAD, C_BAD))):
+            (allies, t("YOUR TEAM"), C_GOOD, C_GOOD), (enemies, t("ENEMY TEAM"), C_BAD, C_BAD))):
         ly = row_y[row_i]
         d.text((gx0, ly - S(18)), title, font=_wfont(S(12), True), fill=tcol)
         if row_i == 1 and scouted:
-            note = "tags read from each account's real history"
+            note = t("tags read from each account's real history")
             d.text((gx0 + grid_w, ly - S(17)), note, font=_wfont(S(10)), fill=C_FAINT, anchor="ra")
         for i, r in enumerate(team[:cols]):
             cx = gx0 + i * (cw + col_gap)
@@ -472,7 +481,7 @@ def render_frame(dd, b, W, H):
         d.rounded_rectangle([gx0, fy, gx0 + grid_w, fy + fh], S(10), fill=C_SURF)
         d.rounded_rectangle([gx0, fy + S(6), gx0 + S(4), fy + fh - S(6)], S(2), fill=C_EMBER)
         px = gx0 + S(18)
-        d.text((px, fy + S(9)), "GAME PLAN", font=_wfont(S(11), True), fill=C_EMBER)
+        d.text((px, fy + S(9)), t("GAME PLAN"), font=_wfont(S(11), True), fill=C_EMBER)
         if plan:
             d.text((px + S(96), fy + S(9)), "→ " + plan[0], font=_wfont(S(12)), fill=C_TXT)
             if len(plan) > 1:
@@ -484,10 +493,10 @@ def render_frame(dd, b, W, H):
             win_t = wc.get("win", "")
             d.text((wx, fy + S(9)), win_t, font=_wfont(S(11)), fill=C_TXT, anchor="ra")
             d.text((wx - int(d.textlength(win_t, font=_wfont(S(11)))) - S(8), fy + S(9)),
-                   "WIN", font=wf, fill=C_GOOD, anchor="ra")
+                   t("WIN"), font=wf, fill=C_GOOD, anchor="ra")
             d.text((wx, fy + S(29)), lose_t, font=_wfont(S(11)), fill=C_MUTED, anchor="ra")
             d.text((wx - int(d.textlength(lose_t, font=_wfont(S(11)))) - S(8), fy + S(29)),
-                   "LOSE", font=wf, fill=C_BAD, anchor="ra")
+                   t("LOSE"), font=wf, fill=C_BAD, anchor="ra")
     return img
 
 
@@ -570,7 +579,20 @@ def main():
     _make_click_through(toplevel_hwnd(root.winfo_id()))
 
     state = {"run": True, "brief": None, "shown": False, "want": False, "fetching": False,
+             "live_fallback": False, "mysid": None,
              "deadline": time.monotonic() + 1200}         # spawned at champ select: cover it + load
+
+    def _roster_timing(stage, elapsed, outcome):
+        _log(f"roster {stage} {elapsed * 1000:.0f}ms {outcome}")
+
+    def _warm_identity():
+        state["mysid"] = ll.current_summoner_id(
+            request_timeout=2.0, on_timing=_roster_timing)
+        _log(f"roster identity warm {'READY' if state['mysid'] else 'missing'}")
+
+    # This endpoint is available throughout ChampSelect.  Reading it now removes the second
+    # blocking LCU request from the much shorter Loading window.
+    threading.Thread(target=_warm_identity, daemon=True).start()
 
     def _done(why):
         _log(f"EXIT {why}")
@@ -594,6 +616,20 @@ def main():
         with _futures.ThreadPoolExecutor(max_workers=max(1, len(cids))) as ex:
             list(ex.map(one, cids))
 
+    def _live_minimal_fallback():
+        # :2999 becomes available only at the very end of Loading on fast machines.  Keep this
+        # independent of a possibly blocked LCU session read so clock-zero still has a chance
+        # to publish the ten anonymous champions before gt crosses 1.0.
+        while state["run"] and state["brief"] is None:
+            fast = ll.brief_from_live(dd, request_timeout=0.25,
+                                      on_timing=_roster_timing)
+            if fast:
+                ll.publish_minimal_snapshot(dd, fast)
+                state["brief"] = fast
+                _log("live fallback brief READY (anonymous champs/roles) -> showing")
+                return
+            time.sleep(0.1)
+
     def _fetch():
         # ALL network work lives here, OFF the poll/render loop, so the overlay is never blocked.
         # Phase 1: champs + tags + plan (fast, no Riot API) -> the overlay appears immediately.
@@ -601,7 +637,13 @@ def main():
         # Phase 3: the ONE shared per-lobby account scout — cards fill in as players land
         #          (on_progress), instead of the whole board waiting on the slowest account.
         try:
-            fast = ll.brief(dd, scout=False)
+            fast = ll.prepare_minimal_snapshot(
+                dd, mysid=state.get("mysid"), attempts=5, request_timeout=1.0,
+                live_timeout=None, retry_delay=0.1,
+                should_continue=lambda: state["run"] and state["brief"] is None,
+                on_timing=_roster_timing,
+            )
+            fast = fast or state["brief"]
             if fast:
                 state["brief"] = fast
                 _log("fast brief READY (champs/tags/plan) -> showing")
@@ -609,8 +651,13 @@ def main():
                 if state["run"]:
                     state["brief"] = dict(fast)              # new object -> tick re-renders w/ art
                     _log("art warmed -> redraw")
+            else:
+                _log("fast brief MISSING after bounded retries")
         except Exception as e:
             _log(f"fast brief ERROR {type(e).__name__}: {e}")
+
+        if not state["run"]:
+            return
 
         landed = {"n": 0}
         def _progress(partial):
@@ -622,7 +669,8 @@ def main():
         try:
             # ONE scout per lobby, shared with the web board + in-game scoreboard (lolload
             # publishes a snapshot the other surfaces read instead of re-scouting).
-            full = ll.brief_shared(dd, on_progress=_progress)
+            full = ll.brief_shared(dd, on_progress=_progress,
+                                   mysid=state.get("mysid"), on_timing=_roster_timing)
             if full and state["run"]:
                 state["brief"] = full
                 _log("scout brief READY (ranks/tags) -> enriched")
@@ -649,6 +697,9 @@ def main():
                 return
             if loading:
                 state["want"] = True
+                if not state["live_fallback"]:
+                    state["live_fallback"] = True
+                    threading.Thread(target=_live_minimal_fallback, daemon=True).start()
                 if not state["fetching"]:                  # kick the fetch ONCE, on a worker thread
                     state["fetching"] = True
                     threading.Thread(target=_fetch, daemon=True).start()

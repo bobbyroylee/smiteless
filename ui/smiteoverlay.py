@@ -30,6 +30,7 @@ for _s in ("stdout", "stderr"):                # pythonw / bundled exe: no conso
             pass
 import smitecard as sc
 import smiteconfig as cfg
+from smitei18n import t, tf
 
 import smiteskin as skin
 BG = skin.VOID   # matches smitecard's background so there's no border seam
@@ -289,7 +290,7 @@ def main():
     bar.pack(side="bottom", fill="x")
     keyrail = tk.Frame(bar, bg=skin.WARN, width=skin.RAIL)   # recolored by key state below
     keyrail.pack(side="left", fill="y")
-    tk.Label(bar, text="RIOT KEY", bg=skin.SURFACE, fg=skin.EMBER,
+    tk.Label(bar, text=t("RIOT KEY"), bg=skin.SURFACE, fg=skin.EMBER,
              font=skin.display(10, bold=True)).pack(side="left", padx=(10, 4), pady=6)
     keylbl = tk.Label(bar, text="", bg=skin.SURFACE, fg=skin.MUTED, font=skin.body(skin.SMALL, bold=True))
     keylbl.pack(side="left", padx=(0, 6))
@@ -302,22 +303,22 @@ def main():
 
     def open_dev_site():
         webbrowser.open("https://developer.riotgames.com/")
-        status.config(text="log in, copy your key, then Paste + Save", fg=skin.MUTED)
+        status.config(text=t("log in, copy your key, then Paste + Save"), fg=skin.MUTED)
 
     def paste_key():
         try:
             c = root.clipboard_get().strip()
         except Exception:
-            status.config(text="clipboard is empty", fg=skin.BAD)
+            status.config(text=t("clipboard is empty"), fg=skin.BAD)
             return
         entry.delete(0, "end")
         entry.insert(0, c)
-        status.config(text="pasted - review it, then Save", fg=skin.MUTED)
+        status.config(text=t("pasted - review it, then Save"), fg=skin.MUTED)
 
     def save_key():
         k = entry.get().strip()
         if not (k.startswith("RGAPI-") and len(k) >= 24):
-            status.config(text="that doesn't look like an RGAPI-... key", fg=skin.BAD)
+            status.config(text=t("that doesn't look like an RGAPI-... key"), fg=skin.BAD)
             return
         for p in KEY_FILES:
             try:
@@ -331,7 +332,7 @@ def main():
         status.config(text=f"saved ...{k[-4:]} - applies next game", fg=skin.GOOD)
 
     def import_build():
-        status.config(text="importing runes + summoners...", fg=skin.MUTED)
+        status.config(text=t("importing runes + summoners..."), fg=skin.MUTED)
 
         def work():
             try:
@@ -369,14 +370,14 @@ def main():
                 root.after(0, lambda: status.config(text=f"hover failed: {e}", fg=skin.BAD))
         threading.Thread(target=work, daemon=True).start()
 
-    skin.button(bar, "Get key ↗", open_dev_site, size=skin.SMALL).pack(side="left", padx=2, pady=4)
+    skin.button(bar, t("Get key ↗"), open_dev_site, size=skin.SMALL).pack(side="left", padx=2, pady=4)
     entry = tk.Entry(bar, bg=skin.SUNKEN, fg=skin.TXT, insertbackground=skin.TXT, relief="flat",
                      font=skin.mono(9), width=30)
     entry.pack(side="left", padx=(8, 2), pady=4, ipady=2)
     entry.bind("<Button-1>", lambda e: entry.focus_set())   # attempt keyboard focus for Ctrl+V
     entry.bind("<Return>", lambda e: save_key())
-    skin.button(bar, "Paste", paste_key, size=skin.SMALL).pack(side="left", padx=2, pady=4)
-    skin.button(bar, "Save", save_key, size=skin.SMALL).pack(side="left", padx=2, pady=4)
+    skin.button(bar, t("Paste"), paste_key, size=skin.SMALL).pack(side="left", padx=2, pady=4)
+    skin.button(bar, t("Save"), save_key, size=skin.SMALL).pack(side="left", padx=2, pady=4)
     status = tk.Label(bar, text="", bg=skin.SURFACE, fg=skin.MUTED, font=skin.body(skin.SMALL))
     status.pack(side="left", padx=8)
     refresh_key_label()

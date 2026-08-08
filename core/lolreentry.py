@@ -35,6 +35,7 @@ import time
 
 import lollive as ll
 import loltempo as lt
+from smitei18n import t, tf
 
 WINDOW = 90.0          # seconds - the death_cluster definition in lolprofile.behavior_read
 E_HOLD = -700.0        # gold-equivalent fight edge at/below which re-entering is a losing trade
@@ -57,7 +58,7 @@ def _evidence():
         import lolprofile as lp
         raw = lp.pattern_evidence("death_cluster")
         if raw:                       # "with it: 8W-15L · without: 11W-6L" — name what "it" is
-            txt = "your games where two deaths landed inside 90s — " + raw
+            txt = tf("your games where two deaths landed inside 90s — {evidence}", evidence=raw)
     except Exception:
         txt = None
     _EV["t"], _EV["text"] = now, txt
@@ -104,24 +105,24 @@ def _verdict(ctx):
     if bodies >= 1.0 and e >= E_CLEAR:
         if dead:
             who = " · ".join(f"{c} {_short(s)}" for c, s in dead[:2])
-            sub = f"{who} — the map is yours until they're back"
+            sub = tf("{who} — the map is yours until they're back", who=who)
         else:
-            sub = "they're a body down — play for the objective, not the kill"
+            sub = t("they're a body down — play for the objective, not the kill")
         return {"verdict": "CLEAR", "tone": "go",
-                "line": "CLEAR — this is your window", "sub": sub}
+                "line": t("CLEAR — this is your window"), "sub": sub}
 
     if e <= E_HOLD or bodies <= -1.0 or (killer_up and killer_ahead):
         if killer_up and killer_ahead and killer:
-            line = f"HOLD — {killer} is up and ahead"
+            line = tf("HOLD — {killer} is up and ahead", killer=killer)
         elif bodies <= -1.0:
-            line = f"HOLD — you're {abs(bodies):.0f} body down"
+            line = tf("HOLD — you're {bodies:.0f} body down", bodies=abs(bodies))
         else:
-            line = "HOLD — you lose any fight now"
-        return {"verdict": "HOLD", "tone": "hold", "line": line, "sub": _SAFE[role]}
+            line = t("HOLD — you lose any fight now")
+        return {"verdict": "HOLD", "tone": "hold", "line": line, "sub": t(_SAFE[role])}
 
     return {"verdict": "RESET", "tone": "plan",
-            "line": "RESET — even fight, no free trade here",
-            "sub": _SAFE[role]}
+            "line": t("RESET — even fight, no free trade here"),
+            "sub": t(_SAFE[role])}
 
 
 # The productive thing to do instead, by role. Deliberately the same shape of instruction

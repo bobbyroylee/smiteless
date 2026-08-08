@@ -62,6 +62,7 @@ for _d in ("core", "ui", "tools"):
 
 import lolqueue as lq                  # ONE BRAIN for "is this split proven?" (lq._z_worse)
 import lolfix as lx                    # ONE READER for "what is a win worth to YOU" (lp_rates)
+from smitei18n import t, tf
 
 # ---- bars -------------------------------------------------------------------------
 MIN_TOTAL = 15        # your games on record before the board renders anything at all
@@ -152,13 +153,14 @@ def _row(c, n, wins_all, base, swing, bar, is_main):
     g_out, w_out = n - g, wins_all - w
     out = dict(c, lp10=0, z=0.0, gap=0.0, share=(g / n) if n else 0.0,
                state="thin", need=max(0, MIN_G - g), main=bool(is_main),
-               evidence=f"{w}W-{g - w}L over {g}", rest="")
+               evidence=tf("{wins}W-{losses}L over {games}", wins=w, losses=g - w, games=g), rest="")
     if g < MIN_G or g_out <= 0:
         # g_out == 0 is the one-trick: nothing of yours to compare against, so no claim. That
         # is not a gap in the module, it IS the answer - a single-champion pool has no spread.
         return out
     rate_out = w_out / g_out
-    out["rest"] = f"{out['wr']}% on it vs {round(rate_out * 100)}% otherwise"
+    out["rest"] = tf("{on_it}% on it vs {otherwise}% otherwise",
+                     on_it=out["wr"], otherwise=round(rate_out * 100))
     gap = (w / g) - rate_out
     out["gap"] = gap
     if gap >= 0:
@@ -205,8 +207,9 @@ def _width(rows, n, wins_all, base, swing):
     if not tail:
         out["state"] = "focused"                       # nothing outside the core to price
         return out
-    out["evidence"] = (f"top {len(core)}: {w_c}W-{g_c - w_c}L  ·  "
-                       f"the other {len(tail)}: {w_t}W-{g_t - w_t}L")
+    out["evidence"] = tf("top {core_count}: {core_wins}W-{core_losses}L  ·  the other {tail_count}: {tail_wins}W-{tail_losses}L",
+                         core_count=len(core), core_wins=w_c, core_losses=g_c - w_c,
+                         tail_count=len(tail), tail_wins=w_t, tail_losses=g_t - w_t)
     if g_c < MIN_SIDE or g_t < MIN_SIDE:
         return out
     if core[-1]["g"] <= tail[0]["g"]:
@@ -254,7 +257,8 @@ def board(champs, lp=None):
     if not out["ready"]:
         out["rows"] = [dict(c, state="thin", lp10=0, z=0.0, gap=0.0, main=False,
                             share=(c["g"] / n) if n else 0.0, need=max(0, MIN_G - c["g"]),
-                            evidence=f"{c['w']}W-{c['g'] - c['w']}L over {c['g']}", rest="")
+                            evidence=tf("{wins}W-{losses}L over {games}",
+                                        wins=c["w"], losses=c["g"] - c["w"], games=c["g"]), rest="")
                        for c in rows_in]
         return out
     base = out["base"]
@@ -328,16 +332,16 @@ def row_note(r):
     """The short right-hand figure for one champion row, in the unit it is measured in."""
     st = r["state"]
     if st == "earner":
-        return f"+{r['lp10']} LP / 10 on it"
+        return tf("+{lp} LP / 10 on it", lp=r["lp10"])
     if st == "bench":
-        return f"{r['lp10']} LP / 10 on it"
+        return tf("{lp} LP / 10 on it", lp=r["lp10"])
     if st == "slump":
-        return "rough patch"
+        return t("rough patch")
     if st == "lean":
-        return f"{round(r['gap'] * 100):+d}pp lean"
+        return tf("{gap:+d}pp lean", gap=round(r["gap"] * 100))
     if st == "flat":
-        return "your average game"
-    return f"{r['need']} more" if r["need"] else "no comparison"
+        return t("your average game")
+    return tf("{games} more", games=r["need"]) if r["need"] else t("no comparison")
 
 
 def width_note(w):
@@ -345,68 +349,73 @@ def width_note(w):
     if not w:
         return ""
     if w["state"] == "priced":
-        return f"{w['lp10']} LP / 10 games"
+        return tf("{lp} LP / 10 games", lp=w["lp10"])
     if w["state"] == "focused":
-        return "focused"
+        return t("focused")
     if w["state"] == "lean":
-        return f"{round(w['gap'] * 100):+d}pp lean"
+        return tf("{gap:+d}pp lean", gap=round(w["gap"] * 100))
     if w["state"] == "flat":
-        return "no cost found"
+        return t("no cost found")
     if w["state"] == "even":
-        return "no core to measure"
-    return "thin"
+        return t("no core to measure")
+    return t("thin")
 
 
 def _champs_n(b):
     n = b.get("pool_n") or 0
-    return f"{n} champion{'s' if n != 1 else ''}"
+    return tf("{count} champion", count=n) if n == 1 else tf("{count} champions", count=n)
 
 
 def headline(b):
     """The one line the profile page leads with - the strongest claim the board can defend."""
     if not b.get("ready"):
-        return (f"THE POOL: reading your games - {b['need']} more and your champions get "
-                "priced in LP")
+        return tf("THE POOL: reading your games - {games} more and your champions get priced in LP",
+                  games=b["need"])
     q, bn, w = b.get("queue"), b.get("bench"), b.get("width") or {}
     if w.get("state") == "priced":
-        return (f"THE POOL: {_champs_n(b)} over your last {b['n']} - your top "
-                f"{len(w['core'])} win {w['wr_core']}%, the other {w['tail_n']} win "
-                f"{w['wr_tail']}%. That spread is {abs(w['lp10'])} LP / 10 games. Commit to "
-                f"{', '.join(w['core'][:CORE_N])}.")
+        return tf("THE POOL: {champions} over your last {games} - your top {core_count} win {core_wr}%, the other {tail_count} win {tail_wr}%. That spread is {lp} LP / 10 games. Commit to {core}.",
+                  champions=_champs_n(b), games=b["n"], core_count=len(w["core"]),
+                  core_wr=w["wr_core"], tail_count=w["tail_n"], tail_wr=w["wr_tail"],
+                  lp=abs(w["lp10"]), core=", ".join(w["core"][:CORE_N]))
     if bn:
-        return (f"THE POOL: {bn['champ']} costs you {abs(bn['lp10'])} LP / 10 games on it "
-                f"({bn['evidence']}). Bench it - queue "
-                f"{(q or {}).get('champ') or (w.get('core') or ['your mains'])[0]} instead.")
+        return tf("THE POOL: {champion} costs you {lp} LP / 10 games on it ({evidence}). Bench it - queue {replacement} instead.",
+                  champion=bn["champ"], lp=abs(bn["lp10"]), evidence=bn["evidence"],
+                  replacement=(q or {}).get("champ") or (w.get("core") or [t("your mains")])[0])
     if q:
-        return (f"THE POOL: {q['champ']} is your earner - +{q['lp10']} LP / 10 games on it "
-                f"({q['evidence']}). Queue it.")
+        return tf("THE POOL: {champion} is your earner - +{lp} LP / 10 games on it ({evidence}). Queue it.",
+                  champion=q["champ"], lp=q["lp10"], evidence=q["evidence"])
     if b.get("slump"):
         s = b["slump"]
-        return (f"THE POOL: rough patch on {s['champ']} ({s['evidence']}) - it's your main and "
-                "the sample says variance, not the pick. Keep queueing it.")
+        return tf("THE POOL: rough patch on {champion} ({evidence}) - it's your main and the sample says variance, not the pick. Keep queueing it.",
+                  champion=s["champ"], evidence=s["evidence"])
     if b["verdict"] == "focused":
-        return (f"THE POOL: {_champs_n(b)} over your last {b['n']}"
-                + (f", top {CORE_N} holding {w.get('share')}%" if b['pool_n'] > CORE_N else "")
-                + " - that IS the discipline. Nothing to cut.")
-    return (f"THE POOL: {_champs_n(b)} over your last {b['n']} - "
-            + ("nothing of yours to compare a single-champion pool against."
-               if b["pool_n"] < 2 else "none of them separates from your own average yet."))
+        share = (tf(", top {core} holding {share}%", core=CORE_N, share=w.get("share"))
+                 if b["pool_n"] > CORE_N else "")
+        return tf("THE POOL: {champions} over your last {games}{share} - that IS the discipline. Nothing to cut.",
+                  champions=_champs_n(b), games=b["n"], share=share)
+    ending = (t("nothing of yours to compare a single-champion pool against.")
+              if b["pool_n"] < 2 else t("none of them separates from your own average yet."))
+    return tf("THE POOL: {champions} over your last {games} - {ending}",
+              champions=_champs_n(b), games=b["n"], ending=ending)
 
 
 def receipt(b):
     """The honesty line under the board. Never omitted - it is what makes the rest usable."""
     if not b.get("ready"):
-        return f"needs {MIN_TOTAL} games on record  ·  {b['n']} so far"
-    lp = (f"your LP: +{b['lp_win']} / -{b['lp_loss']}" if b.get("lp_measured")
-          else f"assuming {b['lp_win']} LP a game (no rank history yet)")
+        return tf("needs {minimum} games on record  ·  {games} so far",
+                  minimum=MIN_TOTAL, games=b["n"])
+    lp = (tf("your LP: +{win} / -{loss}", win=b["lp_win"], loss=b["lp_loss"])
+          if b.get("lp_measured") else
+          tf("assuming {lp} LP a game (no rank history yet)", lp=b["lp_win"]))
     if b["k_eligible"]:
-        bar = (f"bar z>={b['bar']:.2f} across {b['k_eligible']} champion"
-               f"{'s' if b['k_eligible'] != 1 else ''}")
+        bar = tf("bar z>={bar:.2f} across {count} champions",
+                 bar=b["bar"], count=b["k_eligible"])
     elif b["pool_n"] < 2:
-        bar = "one champion, so nothing of yours to compare it against"
+        bar = t("one champion, so nothing of yours to compare it against")
     else:
-        bar = f"no champion has {MIN_G} games yet"
-    return f"{b['n']} games  ·  {lp}  ·  {bar}  ·  correlation from your own games"
+        bar = tf("no champion has {games} games yet", games=MIN_G)
+    return tf("{games} games  ·  {lp}  ·  {bar}  ·  correlation from your own games",
+              games=b["n"], lp=lp, bar=bar)
 
 
 def notes(b):
@@ -414,19 +423,25 @@ def notes(b):
     Ordered by what you can act on soonest. kind is the tone the renderer colors from."""
     out = []
     if not b.get("ready"):
-        return [("quiet", f"POOL - {b['need']} more games and your champions get priced")]
+        return [("quiet", tf("POOL - {games} more games and your champions get priced",
+                              games=b["need"]))]
     q, bn, w = b.get("queue"), b.get("bench"), b.get("width") or {}
     if q:
-        out.append(("queue", f"QUEUE {q['champ']}  +{q['lp10']} LP/10 on it"))
+        out.append(("queue", tf("QUEUE {champion}  +{lp} LP/10 on it",
+                                 champion=q["champ"], lp=q["lp10"])))
     if bn:
-        out.append(("bench", f"BENCH {bn['champ']}  {bn['lp10']} LP/10 on it"))
+        out.append(("bench", tf("BENCH {champion}  {lp} LP/10 on it",
+                                 champion=bn["champ"], lp=bn["lp10"])))
     if w.get("state") == "priced" and len(out) < 2:
-        out.append(("spread", f"POOL {b['pool_n']} champs  {w['lp10']} LP/10 games"))
+        out.append(("spread", tf("POOL {count} champs  {lp} LP/10 games",
+                                  count=b["pool_n"], lp=w["lp10"])))
     if b.get("slump") and len(out) < 2:
-        out.append(("slump", f"{b['slump']['champ']} rough patch - variance, not the pick"))
+        out.append(("slump", tf("{champion} rough patch - variance, not the pick",
+                                 champion=b["slump"]["champ"])))
     if not out:
-        out.append(("quiet", f"POOL {b['pool_n']} champs  ·  "
-                             + ("focused" if b["verdict"] == "focused" else "nothing separates yet")))
+        verdict = t("focused") if b["verdict"] == "focused" else t("nothing separates yet")
+        out.append(("quiet", tf("POOL {count} champs  ·  {verdict}",
+                                 count=b["pool_n"], verdict=verdict)))
     return out[:3]
 
 
@@ -445,11 +460,11 @@ def champ_note(b, name):
         if r["state"] in ("earner", "bench"):
             return r["state"], f"{row_note(r)}  ·  {r['evidence']}  ·  {r['rest']}"
         if r["state"] == "slump":
-            return "slump", f"rough patch - {r['evidence']}, and it's your main"
+            return "slump", tf("rough patch - {evidence}, and it's your main", evidence=r["evidence"])
         if r["state"] == "lean":
             return "lean", f"{row_note(r)}  ·  {r['evidence']}"
         if r["state"] == "flat":
-            return "flat", f"plays like your average game  ·  {r['evidence']}"
+            return "flat", tf("plays like your average game  ·  {evidence}", evidence=r["evidence"])
         return None, None
     return None, None
 
@@ -472,7 +487,7 @@ def short_note(b, name):
         return None, None
     wl = f"({r['w']}W-{r['g'] - r['w']}L)"
     if st == "slump":
-        txt = f"rough patch {wl} - variance, not the pick"
+        txt = tf("rough patch {record} - variance, not the pick", record=wl)
     else:
         txt = f"{row_note(r)} {wl}"
     return st, txt[:DRAFT_MAX]
@@ -551,6 +566,10 @@ DEMOS = ("thin", "onetrick", "focused", "earner", "bench", "slump", "flat", "noi
 # ---- guard suite --------------------------------------------------------------------
 
 def selftest():
+    # Phrase assertions below predate localization; bilingual contract parity lives in the
+    # repository i18n guard, while this suite remains about the statistical engine.
+    from smitei18n import set_lang
+    set_lang("en")
     """Every invariant the board is allowed to be trusted for. Raises on the first break."""
     def ck(cond, msg):
         if not cond:

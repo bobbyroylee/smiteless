@@ -19,7 +19,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("core", "ui", "tools"):            # cross-folder flat imports
     sys.path.insert(0, os.path.join(_ROOT, _d))
 import lolbuild as lb
-import claudecli as cc         # logged-in claude CLI (fallback path only)
+import llmcli
+import smiteconfig as cfg
+from smitei18n import tf
 
 CACHE = os.path.expanduser("~/.claude/cache/matchups")
 CS_CACHE = os.path.expanduser("~/.claude/cache/counterstats")
@@ -40,14 +42,21 @@ def patch_of(ver):
 
 def _file(my_key, opp_key, role, patch):
     os.makedirs(CACHE, exist_ok=True)
-    return os.path.join(CACHE, f"{_safe(my_key)}_vs_{_safe(opp_key)}_{_safe(role)}_{_safe(patch)}.txt")
+    try:
+        from smitei18n import lang
+        locale = lang()
+    except Exception:
+        locale = "pt_BR"
+    return os.path.join(CACHE, f"{_safe(my_key)}_vs_{_safe(opp_key)}_{_safe(role)}_{_safe(patch)}_{locale}.txt")
 
 
 # Signatures that mean the "tip" is actually an error the CLI printed (auth/limit/etc). None of
 # these appear in a real lane tip, so we can safely reject + never cache/show them.
 _BAD_SIGNS = ("api error", "invalid authentication", "authentication credentials",
               "failed to authenticate", "authentication_error", "usage limit", "session limit",
-              "rate limit", "invalid x-api-key", "credit balance", "claude auth")
+              "rate limit", "rate_limit", "invalid x-api-key", "invalid api key",
+              "credit balance", "quota exceeded", "not logged in", "login required",
+              "claude auth", "codex auth")
 
 
 def _looks_bad(text):
@@ -72,6 +81,30 @@ def get_tip(my_key, opp_key, role, patch):
         except Exception:
             pass
     return None
+
+
+def coach_snapshot(dd, my_name, opp_name, role, locale="en"):
+    """Read one exact cached matchup without generating, searching, writing or self-healing."""
+    try:
+        my_cid = dd["name2id"].get(dd["norm"](my_name))
+        opp_cid = dd["name2id"].get(dd["norm"](opp_name))
+        if not my_cid or not opp_cid:
+            return None
+        my_key = dd["id2key"][my_cid]
+        opp_key = dd["id2key"][opp_cid]
+        patch = patch_of(dd.get("ver"))
+        filename = (f"{_safe(my_key)}_vs_{_safe(opp_key)}_{_safe(role)}_"
+                    f"{_safe(patch)}_{'pt_BR' if locale == 'pt_BR' else 'en'}.txt")
+        path = os.path.join(CACHE, filename)
+        text = open(path, encoding="utf-8").read().strip()
+        if not text or _looks_bad(text):
+            return None
+        return {"self_champion": dd["id2name"].get(my_cid, my_name),
+                "opponent": dd["id2name"].get(opp_cid, opp_name),
+                "role": str(role or "")[:12], "patch": patch,
+                "cached_guidance": text[:2400], "source_age_ms": 0}
+    except (KeyError, OSError, TypeError, ValueError):
+        return None
 
 
 def _cs_slug(name):
@@ -185,12 +218,13 @@ def written_tip(dd, my_cid, opp_cid, role, patch):
         return (_tip_score(t["text"]), t["votes"], min(len(t["text"]), 320))
     mine = sorted((t for t in pool if norm(t["champ"]) == mine_norm), key=rank, reverse=True)
     if mine:
-        return f"{mine[0]['text']}  — a {dd['id2name'].get(my_cid, '')} main (MOBAFire)"
+        return tf("{tip}  — a {champ} main (MOBAFire)",
+                  tip=mine[0]["text"], champ=dd["id2name"].get(my_cid, ""))
     best = sorted(pool, key=rank, reverse=True)[:2]
     if not best:
         return None
     out = "  ·  ".join(t["text"] for t in best[:1] if t["text"])
-    return f"{out}  — guide authors (MOBAFire)" if out else None
+    return tf("{tip}  — guide authors (MOBAFire)", tip=out) if out else None
 
 
 def generate_tip(my_name, my_key, opp_name, opp_key, role, patch):
@@ -215,6 +249,12 @@ def generate_tip(my_name, my_key, opp_name, opp_key, role, patch):
 
 def _generate_tip_llm(my_name, my_key, opp_name, opp_key, role, patch):
     """Fallback: generate with the logged-in CLI (web search) + cache. Returns (text, error)."""
+    provider = cfg.load().get("llm_provider", cfg.LLM_PROVIDER_DEFAULT)
+    try:
+        from smitei18n import lang
+        language = "Brazilian Portuguese" if lang() == "pt_BR" else "English"
+    except Exception:
+        language = "Brazilian Portuguese"
     prompt = (
         f"Patch {patch}. Search the web for the CURRENT {my_name} vs {opp_name} {role} matchup "
         f"(Mobafire, u.gg, Mobalytics, Reddit). In 2-3 sentences, give a SPECIFIC, up-to-date tip on "
@@ -224,9 +264,9 @@ def _generate_tip_llm(my_name, my_key, opp_name, opp_key, role, patch):
         f"CRITICAL: do NOT recommend or name ANY runes, keystones, summoner spells, or items - the "
         f"live op.gg build is shown to the player separately and the LLM gets builds wrong. Keep it "
         f"purely to lane mechanics and decisions. If you can't find current info, use your own best "
-        f"knowledge. Plain text only - no preamble, no markdown, no bullet points, no headers."
+        f"knowledge. Reply in {language}. Plain text only - no preamble, no markdown, no bullet points, no headers."
     )
-    text, err = cc.call_claude(prompt, allow_tools="WebSearch,WebFetch", timeout=170)
+    text, err = llmcli.call(prompt, provider, allow_web=True, timeout=170)
     if not text or _looks_bad(text):          # never cache/return an error string as a tip
         return None, (err or "tip unavailable")
     text = " ".join(text.split())          # collapse to one block

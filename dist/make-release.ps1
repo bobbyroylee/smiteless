@@ -1,6 +1,7 @@
 # Cut a new Smiteless release so your brother's copy can update itself.
 #
-#   powershell -ExecutionPolicy Bypass -File dist\make-release.ps1 -Version 1.1.0 [-Notes "what changed"]
+#   powershell -ExecutionPolicy Bypass -File dist\make-release.ps1 -Version 1.1.0 `
+#     [-Notes "what changed"]
 #
 # It bumps VERSION, builds SmitelessSetup.exe, commits, tags, and publishes a GitHub Release
 # with the installer attached. The installed app checks that release and offers the update.

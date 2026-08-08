@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verificar Smiteless"
+  short_description: "Executar e validar mudanças no Smiteless"
+  default_prompt: "Use $verify para validar as mudanças atuais do Smiteless."

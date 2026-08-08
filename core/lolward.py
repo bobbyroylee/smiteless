@@ -67,6 +67,8 @@ habit, straight out of the behavior ledger, so it is your data talking and not f
 import math
 import time
 
+from smitei18n import t, tf
+
 # ---- what the live feed calls things ----
 WARD_KEYS = ("wardScore", "visionScore")   # :2999 calls it wardScore; alias kept defensively
 CTRL_WARD = 2055                           # Control Ward (the only ward you buy and carry)
@@ -108,7 +110,7 @@ _VPM_FALLBACK = {"UTILITY": 1.2, "JUNGLE": 0.55}     # only used if lolprofile c
 # the widget already has loaded) - selftest asserts the two never drift.
 OBJ_SIDE = {"Drake": "bot", "Elder": "bot", "Baron": "top", "Herald": "top", "Grubs": "top"}
 
-_EV = {"t": 0.0, "text": None}
+_EV = {"t": 0.0, "raw": None}
 _BAR = {"v": None}
 
 
@@ -134,18 +136,16 @@ def _evidence():
     None when the ledger doesn't have both sides yet. Cached - it's a disk read and this is
     called from a 1s poll loop."""
     now = time.monotonic()
-    if _EV["text"] is not None and (now - _EV["t"]) < _EV_TTL:
-        return _EV["text"]
-    txt = None
+    if _EV["raw"] is not None and (now - _EV["t"]) < _EV_TTL:
+        return tf("your games under the vision bar — {evidence}", evidence=_EV["raw"])
+    raw = None
     try:
         import lolprofile as lp
         raw = lp.pattern_evidence("low_vision")
-        if raw:                       # "with it: 2W-7L · without: 9W-4L" — name what "it" is
-            txt = "your games under the vision bar — " + raw
     except Exception:
-        txt = None
-    _EV["t"], _EV["text"] = now, txt
-    return txt
+        raw = None
+    _EV["t"], _EV["raw"] = now, raw
+    return tf("your games under the vision bar — {evidence}", evidence=raw) if raw else None
 
 
 def ward_score(p):
@@ -289,16 +289,18 @@ def _mmss(s):
 # few seconds that let you leave. lolprofile's own review line says exactly this ("deep wards
 # when ahead, defensive wards when behind") — this is that sentence, at the moment it applies.
 def _where(side, ahead, trink=None):
+    side = t(side)
     if ahead is True:
-        base = (f"go PAST the pit — their {side} jungle entrance, so you see them walk in "
-                f"and the fight starts on your terms")
+        base = tf("go PAST the pit — their {side} jungle entrance, so you see them walk in "
+                  "and the fight starts on your terms", side=side)
     elif ahead is False:
-        base = (f"your own {side} tri and the pit mouth — behind, you're buying the seconds "
-                f"that let you leave, not a fight")
+        base = tf("your own {side} tri and the pit mouth — behind, you're buying the seconds "
+                  "that let you leave, not a fight", side=side)
     else:
-        base = f"the {side} river bush and the pit mouth — a pit you can't see is a coinflip"
+        base = tf("the {side} river bush and the pit mouth — a pit you can't see is a coinflip",
+                  side=side)
     how = _HOW.get(trink)
-    return f"{base} · {how}" if how else base
+    return tf("{instruction} · {trinket}", instruction=base, trinket=t(how)) if how else base
 
 
 # ...and HOW, which is decided by the trinket you are holding rather than by the game state.
@@ -346,23 +348,30 @@ def _verdict(ctx):
     bought, placed = int(ctx.get("bought") or 0), int(ctx.get("placed") or 0)
     have_pct = ctx.get("have_pct")
     have_pct = None if have_pct is None else max(0, min(100, int(round(float(have_pct) * 100))))
-    ledger = ((f"{placed} of {bought} placed" if bought else "")
+    ledger = ((tf("{placed} of {bought} placed", placed=placed, bought=bought) if bought else "")
               + (" · " if bought and have_pct is not None else "")
-              + (f"control ward on you {have_pct}% of the game" if have_pct is not None else ""))
+              + (tf("control ward on you {percent}% of the game", percent=have_pct)
+                 if have_pct is not None else ""))
 
     # The quiet row, as ORDERED SEGMENTS rather than one string: the widget has ~240px for it
     # and joins as many as fit, so a long game state degrades to the important half instead of
     # being clipped mid-number. Most important first — the head-to-head is the whole point.
-    lead = f"{vs:.1f}" + (f" v {them:.1f}" if them is not None else "")
-    bits = [lead, f"{vpm:.1f}/min" + (f", bar {bar:.2f}".rstrip("0").rstrip(".") if under else "")]
+    lead = (tf("{mine:.1f} v {theirs:.1f}", mine=vs, theirs=them)
+            if them is not None else f"{vs:.1f}")
+    rate = f"{vpm:.1f}/min"
+    if under:
+        rate = tf("{rate}, bar {bar}", rate=rate,
+                  bar=f"{bar:.2f}".rstrip("0").rstrip("."))
+    bits = [lead, rate]
     if pinks:
-        bits.append(f"{pinks} pink" + ("s" if pinks > 1 else ""))
+        bits.append(tf("{count} pink", count=pinks) if pinks == 1 else
+                    tf("{count} pinks", count=pinks))
     elif dark >= 30:
-        bits.append(f"dark {_mmss(dark)}")
+        bits.append(tf("dark {time}", time=_mmss(dark)))
     # A recall window is the ONE moment "buy a control ward" is an action rather than a wish -
     # you are standing in the shop. It leads the row for those seconds and then goes away.
     if ctx.get("base") and not pinks and gold >= CTRL_GOLD:
-        bits.insert(0, f"+{CTRL_GOLD}g control ward")
+        bits.insert(0, tf("+{gold}g control ward", gold=CTRL_GOLD))
     card = {"vs": round(vs, 1), "them": (round(them, 1) if them is not None else None),
             "vpm": round(vpm, 2), "bar": bar, "under": under,
             "gap": (round(vs - them, 1) if them is not None else None),
@@ -373,8 +382,10 @@ def _verdict(ctx):
     # A fight verdict from the tempo engine outranks everything here: once the call is TAKE or
     # GIVE the decision is made, and a second card about wards is a card you learn to skip.
     if str(ctx.get("tempo_phase") or "") in FIGHT_PHASES:
-        card.update(verdict="WARD", tone="plan", quiet=True, line=f"WARD — {card['row']}",
-                    sub=f"vision {vpm:.1f}/min against a {bar:g} bar")
+        card.update(verdict="WARD", tone="plan", quiet=True,
+                    line=tf("WARD — {row}", row=card["row"]),
+                    sub=tf("vision {rate:.1f}/min against a {bar:g} bar",
+                           rate=vpm, bar=bar))
         return card
 
     # ---- 1. an objective is coming and your team is walking into an unlit pit. The single
@@ -387,7 +398,8 @@ def _verdict(ctx):
             secs = float(pit.get("secs") or 0)
         except (TypeError, ValueError):
             secs = 0.0
-        when = f"in {int(round(secs))}s" if secs > 0 else "is UP"
+        when = (tf("in {seconds}s", seconds=int(round(secs))) if secs > 0 else
+                t("is UP"))
         # The DEADLINE, not just the countdown: vision placed as the fight starts is
         # decoration, so what you actually need is the clock it has to be in BY. Only while
         # there is still one - inside the last few seconds the answer is "now".
@@ -396,26 +408,33 @@ def _verdict(ctx):
             lead = float(_ll.ALERT_LEAD)
         except Exception:
             lead = 45.0
-        by = f" · in by {_mmss(gt + secs - lead)}" if secs > lead else ""
+        by = (tf(" · in by {deadline}", deadline=_mmss(gt + secs - lead))
+              if secs > lead else "")
         # The clock slot carries the DARK duration, not the objective countdown: the countdown
         # is already in the headline (and on the widget's own objective chip), and the number
         # only this surface knows is how long the map has been unlit.
         card.update(verdict="PIT", tone="hold", quiet=False, obj=label, secs=int(round(secs)),
                     clock_txt=_mmss(dark),
-                    line=f"PIT — {label.lower()} {when} and nothing of yours is alive{by}",
+                    line=tf("PIT — {objective} {when} and nothing of yours is alive{deadline}",
+                            objective=t(label).lower(), when=when, deadline=by),
                     sub=_where(side, ctx.get("ahead"), trink))
         return card
 
     # ---- 2. no objective pending, but the map has been dark for a minute and forty. Said
     #         once, held for a few seconds, then it hands the slot straight back.
     if dark >= DARK_SECS and ctx.get("dark_card"):
-        gapt = (f" · they're on {them:.0f}" if them is not None and them > vs else "")
+        gapt = (tf(" · they're on {score:.0f}", score=them)
+                if them is not None and them > vs else "")
         card.update(verdict="DARK", tone="hold", quiet=False, clock_txt=_mmss(dark),
-                    line=f"DARK — {_mmss(dark)} with no vision of yours on the map{gapt}",
-                    sub=((_DARK_FIX.get(role, "") or "") if not pinks else
-                         f"you are carrying {pinks} control ward{'s' if pinks > 1 else ''} — "
-                         f"that is {pinks * CTRL_GOLD}g of map you already paid for")
-                        + (f" · {ledger}" if ledger else ""))
+                    line=tf("DARK — {time} with no vision of yours on the map{gap}",
+                            time=_mmss(dark), gap=gapt),
+                    sub=(t(_DARK_FIX.get(role, "") or "") if not pinks else
+                         (tf("you are carrying {count} control ward — that is {gold}g of map "
+                             "you already paid for", count=pinks, gold=pinks * CTRL_GOLD)
+                          if pinks == 1 else
+                          tf("you are carrying {count} control wards — that is {gold}g of map "
+                             "you already paid for", count=pinks, gold=pinks * CTRL_GOLD)))
+                        + (tf(" · {ledger}", ledger=ledger) if ledger else ""))
         return card
 
     # ---- 3. the pink in your bag. Bought, carried, never placed — the most fixable half of
@@ -423,18 +442,22 @@ def _verdict(ctx):
     if pinks and ctx.get("pink_card"):
         held = _mmss(ctx.get("held") or 0)
         card.update(verdict="PINK", tone="plan", quiet=False, clock_txt=held,
-                    line=f"PINK — {pinks * CTRL_GOLD}g of control ward, carried {held}",
-                    sub="it does nothing in your bag — the pit mouth before the next objective, "
-                        "your own tri when you're behind"
-                        + (f" · {ledger}" if ledger else ""))
+                    line=tf("PINK — {gold}g of control ward, carried {time}",
+                            gold=pinks * CTRL_GOLD, time=held),
+                    sub=t("it does nothing in your bag — the pit mouth before the next "
+                          "objective, your own tri when you're behind")
+                        + (tf(" · {ledger}", ledger=ledger) if ledger else ""))
         return card
 
     # ---- 4. the quiet row. One line, all game: this is a scoreboard you want to be able to
     #         GLANCE at, not a coach clearing its throat every thirty seconds.
     card.update(verdict="WARD", tone="hold" if under else "plan", quiet=True,
-                line=f"WARD — {card['row']}",
-                sub=(f"{vs - them:+.0f} on their {ROLE_WORD.get(role, role)} — this is the vision war"
-                     if them is not None else f"vision {vpm:.1f}/min against a {bar:g} bar"))
+                line=tf("WARD — {row}", row=card["row"]),
+                sub=(tf("{gap:+.0f} on their {role} — this is the vision war",
+                        gap=vs - them, role=t(ROLE_WORD.get(role, role)))
+                     if them is not None else
+                     tf("vision {rate:.1f}/min against a {bar:g} bar",
+                        rate=vpm, bar=bar)))
     return card
 
 

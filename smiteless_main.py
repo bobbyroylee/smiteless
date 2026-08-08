@@ -19,6 +19,10 @@ One frozen exe (SmitelessApp.exe) covers every window/tool; the first CLI arg pi
     SmitelessApp.exe update [--apply]  check GitHub for a newer release (notify / one-click)
     SmitelessApp.exe selftest       dependency health check (dev)
 
+The two ``__stt-*`` commands are private JSON workers. The frozen executable uses a
+console-capable bootloader whose console is hidden before startup, allowing those workers to
+retain pipe-based stdin/stdout without showing a window.
+
 Kept tiny on purpose so PyInstaller has a clean root to analyse.
 """
 import os
@@ -45,7 +49,13 @@ def main():
     rest = sys.argv[2:]
     sys.argv = [sys.argv[0]] + rest                  # downstream sees only its own flags
 
-    if cmd == "overlay":
+    if cmd == "__stt-mic-worker":
+        import smitemicworker
+        raise SystemExit(smitemicworker.main())
+    elif cmd == "__stt-whisper-worker":
+        import smitewhisperworker
+        raise SystemExit(smitewhisperworker.main())
+    elif cmd == "overlay":
         import smiteoverlay
         smiteoverlay.main()
     elif cmd == "widget":
@@ -72,6 +82,9 @@ def main():
     elif cmd == "mute":
         import lolmute
         lolmute.main()
+    elif cmd == "coach":
+        import smitecoach
+        raise SystemExit(smitecoach.main(rest))
     elif cmd == "phase":
         import tempfile
         import phasecheck
@@ -112,7 +125,7 @@ def main():
         import selftest
         selftest.main()
     else:
-        sys.stderr.write("usage: SmitelessApp.exe [overlay|widget|dead|load|queue|mute|settings|"
+        sys.stderr.write("usage: SmitelessApp.exe [overlay|widget|dead|load|queue|mute|coach|settings|"
                          "phase|autoaccept|login <name>|accounts|fill <name>|logins|update|"
                          "selftest]\n")
 

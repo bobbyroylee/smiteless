@@ -12,6 +12,7 @@ import sys, os, webbrowser
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("core", "ui", "tools"):
     sys.path.insert(0, os.path.join(_ROOT, _d))
+from smitei18n import t
 for _s in ("stdout", "stderr"):
     if getattr(sys, _s, None) is None:
         try:
@@ -28,7 +29,7 @@ KEY_FILES = [os.path.expanduser("~/.riot_api_key"), os.path.expanduser("~/.riot_
 def prompt(old_key):
     import tkinter as tk
     root = tk.Tk()
-    root.title("Smiteless — Riot key expired")
+    root.title(f"Smiteless — {t('Riot key expired')}")
     root.configure(bg=BG)
     root.resizable(False, False)
     try:
@@ -37,11 +38,9 @@ def prompt(old_key):
         pass
     wrap = tk.Frame(root, bg=BG)
     wrap.pack(padx=20, pady=16)
-    tk.Label(wrap, text="Your Riot API key expired", font=("Segoe UI", 12, "bold"),
+    tk.Label(wrap, text=t("Your Riot API key expired"), font=("Segoe UI", 12, "bold"),
              fg=GOLD, bg=BG).pack(anchor="w")
-    tk.Label(wrap, text="Free dev keys stop working after 24 hours. Grab a fresh one\n"
-                        "(same login, one click) and paste it here — everything else keeps working\n"
-                        "without it, but ranks, match history and the scout need it.",
+    tk.Label(wrap, text=t("Free dev keys stop working after 24 hours. Grab a fresh one\n(same login, one click) and paste it here — everything else keeps working\nwithout it, but ranks, match history and the scout need it."),
              font=("Segoe UI", 9), fg=MUTED, bg=BG, justify="left").pack(anchor="w", pady=(4, 10))
     row = tk.Frame(wrap, bg=BG)
     row.pack(fill="x")
@@ -57,12 +56,12 @@ def prompt(old_key):
             entry.delete(0, "end")
             entry.insert(0, root.clipboard_get().strip())
         except Exception:
-            status.config(text="clipboard is empty", fg=RED)
+            status.config(text=t("clipboard is empty"), fg=RED)
 
     def save(_e=None):
         k = entry.get().strip()
         if not (k.startswith("RGAPI-") and len(k) >= 24):
-            status.config(text="that doesn't look like an RGAPI-... key", fg=RED)
+            status.config(text=t("that doesn't look like an RGAPI-... key"), fg=RED)
             return
         for p in KEY_FILES:
             try:
@@ -83,10 +82,10 @@ def prompt(old_key):
                          activeforeground=(BG if accent else TXT), relief="flat", bd=0,
                          padx=12, pady=4, font=("Segoe UI", 9, "bold"), cursor="hand2")
 
-    mk("Get key ↗", lambda: webbrowser.open("https://developer.riotgames.com/")).pack(side="left")
-    mk("Later", root.destroy).pack(side="right", padx=(6, 0))
-    mk("Save", save, accent=True).pack(side="right", padx=(6, 0))
-    mk("Paste", paste).pack(side="right")
+    mk(t("Get key ↗"), lambda: webbrowser.open("https://developer.riotgames.com/")).pack(side="left")
+    mk(t("Later"), root.destroy).pack(side="right", padx=(6, 0))
+    mk(t("Save"), save, accent=True).pack(side="right", padx=(6, 0))
+    mk(t("Paste"), paste).pack(side="right")
     entry.bind("<Return>", save)
     root.update_idletasks()
     root.eval("tk::PlaceWindow . center")

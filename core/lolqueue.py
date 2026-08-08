@@ -22,6 +22,7 @@ Sources, in order: the League client's own match history (keyless, never rate-li
 then lolprofile's behavior ledger on disk (so the call still works with the client shut).
 """
 import os, json, time, datetime
+from smitei18n import t, tf
 
 SESSION_GAP = 3 * 3600        # a >3h break starts a new sitting (matches lolprofile)
 REQUEUE_GAP = 10 * 60         # "straight back in" = queued inside 10 min of the last game
@@ -40,6 +41,11 @@ _INSTRUCTION = {"streak": ("STOP", "LOG OFF WITH THE LP"),
 
 _LOG = os.path.expanduser("~/.claude/smiteless_queue.log")
 _LEDGER = os.path.expanduser("~/.claude/cache/riot/behavior_ledger.json")
+_QUEUE_NAMES = {420: "Ranked Solo/Duo", 440: "Ranked Flex", 400: "Normal Draft",
+                430: "Normal Blind", 450: "ARAM", 480: "Swiftplay", 490: "Quickplay",
+                700: "Clash", 1700: "Arena", 1900: "URF"}
+_POSITIONS = {"TOP": "TOP", "JUNGLE": "JUNGLE", "MIDDLE": "MID", "BOTTOM": "ADC",
+              "UTILITY": "SUPPORT"}
 
 
 def log(msg):
@@ -222,12 +228,14 @@ def call(games, now=None):
     n = len(ann)
     base_w = sum(1 for g in ann if g["win"])
     base = round(base_w / n * 100) if n else 0
-    out = {"verdict": "GO", "headline": "QUEUE IT", "sub": "", "lines": [],
+    out = {"verdict": "GO", "headline": t("QUEUE IT"), "sub": "", "lines": [],
            "session": st, "n": n, "base": base}
 
     if n < MIN_BASE:
-        out["sub"] = (f"no read yet — {n} of {MIN_BASE} ranked games logged. "
-                      f"Smiteless only calls it off your own history.")
+        out["sub"] = tf(
+            "no read yet — {count} of {minimum} ranked games logged. "
+            "Smiteless only calls it off your own history.",
+            count=n, minimum=MIN_BASE)
         return out
 
     # The buckets the NEXT game falls into. Each is a slice of your own history taken with
@@ -237,14 +245,15 @@ def call(games, now=None):
         # always sampled (and labelled) at 2+, not at today's exact streak: a "5+ losses"
         # slice of your own history is a handful of games and can't prove anything.
         cands.append((_bucket(ann, lambda g: g["prev_losses"] >= 2,
-                              "after 2+ losses"), "streak"))
+                              t("after 2+ losses")), "streak"))
     if st["idx"] >= DEEP_FROM:
         cands.append((_bucket(ann, lambda g, k=st["idx"]: g["idx"] >= k,
-                              f"game {st['idx']}+ of a sitting"), "deep"))
+                              tf("game {index}+ of a sitting", index=st["idx"])), "deep"))
     if st["since"] is not None and st["games"] and st["since"] < REQUEUE_GAP:
         cands.append((_bucket(ann, lambda g: g["gap"] is not None and g["gap"] < REQUEUE_GAP,
-                              "straight back in (<10 min)"), "requeue"))
-    cands.append((_bucket(ann, lambda g, c=st["clock"]: g["clock"] == c, st["clock"]), "clock"))
+                              t("straight back in (<10 min)")), "requeue"))
+    cands.append((_bucket(ann, lambda g, c=st["clock"]: g["clock"] == c,
+                          t(st["clock"])), "clock"))
     cands = [(b, k) for b, k in cands if b]
 
     def _proven_bad(b):
@@ -256,14 +265,15 @@ def call(games, now=None):
     # game AFTER this one crosses into a proven-bad deep-sitting bucket.
     edge = []
     if st["prev_losses"] == 1:
-        b = _bucket(ann, lambda g: g["prev_losses"] >= 2, "after 2+ losses")
+        b = _bucket(ann, lambda g: g["prev_losses"] >= 2, t("after 2+ losses"))
         if _proven_bad(b):
-            edge.append((b, "a loss here puts you in it"))
+            edge.append((b, t("a loss here puts you in it")))
     nxt = st["idx"] + 1
     if nxt >= DEEP_FROM:
-        b = _bucket(ann, lambda g, k=nxt: g["idx"] >= k, f"game {nxt}+ of a sitting")
+        b = _bucket(ann, lambda g, k=nxt: g["idx"] >= k,
+                    tf("game {index}+ of a sitting", index=nxt))
         if _proven_bad(b) and not any(k == "deep" for _b, k in stop):
-            edge.append((b, "the game after this one is in it"))
+            edge.append((b, t("the game after this one is in it")))
 
     for b, _k in sorted(cands, key=lambda x: -(x[0]["rest_wr"] - x[0]["wr"])):
         gap = b["rest_wr"] - b["wr"]
@@ -275,9 +285,13 @@ def call(games, now=None):
             tone = "good"
         else:
             continue
-        lead = "leaning cold: " if tone == "soft" else ""
-        out["lines"].append({"text": f"{lead}{b['label']} · {b['wr']}% over {b['n']} "
-                                     f"(vs {b['rest_wr']}% otherwise)", "tone": tone})
+        lead = t("leaning cold: ") if tone == "soft" else ""
+        out["lines"].append({
+            "text": tf("{lead}{label} · {winrate}% over {games} "
+                       "(vs {other_winrate}% otherwise)",
+                       lead=lead, label=b["label"], winrate=b["wr"], games=b["n"],
+                       other_winrate=b["rest_wr"]),
+            "tone": tone})
     out["lines"] = out["lines"][:3]
 
     if stop:
@@ -287,40 +301,105 @@ def call(games, now=None):
         worst, kind = max(stop, key=lambda x: (x[1] != "requeue",
                                                x[0]["rest_wr"] - x[0]["wr"]))
         out["verdict"], out["headline"] = _INSTRUCTION[kind]
-        out["sub"] = (f"{worst['label']}, you win {worst['wr']}% — "
-                      f"{worst['rest_wr'] - worst['wr']}pp under the rest of your games, "
-                      f"over {worst['n']} of them.")
+        out["headline"] = t(out["headline"])
+        out["sub"] = tf(
+            "{label}, you win {winrate}% — {gap}pp under the rest of your games, "
+            "over {games} of them.",
+            label=worst["label"], winrate=worst["wr"],
+            gap=worst["rest_wr"] - worst["wr"], games=worst["n"])
     elif edge:
         b, why = edge[0]
         out["verdict"] = "LAST ONE"
-        out["headline"] = "ONE MORE, THEN OUT"
-        out["sub"] = f"{b['label']} you're {b['wr']}% over {b['n']} — {why}."
+        out["headline"] = t("ONE MORE, THEN OUT")
+        out["sub"] = tf("{label} you're {winrate}% over {games} — {why}.",
+                        label=b["label"], winrate=b["wr"], games=b["n"], why=why)
     else:
-        out["headline"] = "QUEUE IT"
+        out["headline"] = t("QUEUE IT")
         soft = next((l for l in out["lines"] if l["tone"] == "soft"), None)
         good = next((l for l in out["lines"] if l["tone"] == "good"), None)
         if soft:
-            out["sub"] = "nothing your history can prove against this one — but watch it."
+            out["sub"] = t("nothing your history can prove against this one — but watch it.")
         elif good:
-            out["sub"] = "this is one of your good windows."
+            out["sub"] = t("this is one of your good windows.")
         else:
-            out["sub"] = "nothing in your last {} games argues against this one.".format(n)
+            out["sub"] = tf("nothing in your last {games} games argues against this one.",
+                            games=n)
     return out
 
 
 def session_line(st):
     """'SESSION - 4 games - 1W-3L - 2h10m in', or '' before the first game of a sitting."""
     if not st or not st.get("games"):
-        return "first game of the sitting"
-    bits = [f"{st['games']} game" + ("s" if st["games"] != 1 else ""),
-            f"{st['w']}W-{st['l']}L"]
+        return t("first game of the sitting")
+    bits = [tf("{games} game", games=st["games"]) if st["games"] == 1
+            else tf("{games} games", games=st["games"]),
+            tf("{wins}W-{losses}L", wins=st["w"], losses=st["l"])]
     s = st.get("streak") or 0
     if abs(s) >= 2:
-        bits.append(f"{abs(s)}{'W' if s > 0 else 'L'} streak")
+        bits.append(tf("{count}{result} streak", count=abs(s),
+                       result=t("W" if s > 0 else "L")))
     if st.get("since") is not None:
         m = st["since"] // 60
-        bits.append(f"last game {m}m ago" if m < 90 else f"last game {m // 60}h ago")
+        bits.append(tf("last game {minutes}m ago", minutes=m) if m < 90
+                    else tf("last game {hours}h ago", hours=m // 60))
     return "  ·  ".join(bits)
+
+
+def _coach_queue_state(phase=None):
+    """Cheap local queue state, kept here so the coach does not import smitecard UI locals."""
+    import lolbuild as lb
+    import lolgame as lg
+    if phase is None:
+        try:
+            import phasecheck
+            phase = phasecheck.phase()
+        except Exception:
+            phase = ""
+    out = {"phase": phase, "queue": "", "roles": [], "elapsed_seconds": None,
+           "estimated_seconds": None, "ready_check_seconds": None}
+    lc = lg._lcu()
+    if not lc:
+        return out
+    port, hdr = lc
+
+    def get(path):
+        try:
+            return lb.http(f"https://127.0.0.1:{port}{path}", headers=hdr,
+                           timeout=1, insecure=True)
+        except Exception:
+            return None
+
+    lobby = get("/lol-lobby/v2/lobby") or {}
+    config = lobby.get("gameConfig") or {} if isinstance(lobby, dict) else {}
+    out["queue"] = _QUEUE_NAMES.get(config.get("queueId"), "")
+    member = lobby.get("localMember") or {} if isinstance(lobby, dict) else {}
+    for role in (member.get("firstPositionPreference"), member.get("secondPositionPreference")):
+        if role and role != "UNSELECTED":
+            out["roles"].append(_POSITIONS.get(role, role))
+    search = get("/lol-matchmaking/v1/search")
+    if isinstance(search, dict):
+        out["elapsed_seconds"] = search.get("timeInQueue")
+        out["estimated_seconds"] = search.get("estimatedQueueTime")
+    if phase == "ReadyCheck":
+        ready = get("/lol-matchmaking/v1/ready-check")
+        if isinstance(ready, dict):
+            out["ready_check_seconds"] = ready.get("timer")
+    return out
+
+
+def coach_snapshot(games=None, now=None, state=None, phase=None):
+    """Cached-first Queue Call facts for the coach, without a synchronous history refresh."""
+    games = _from_ledger(80) if games is None else list(games)
+    verdict = call(games, now=now)
+    return {
+        "state": _coach_queue_state(phase=phase) if state is None else state,
+        "verdict": verdict.get("verdict"),
+        "headline": verdict.get("headline"),
+        "summary": verdict.get("sub"),
+        "evidence": [row.get("text") for row in (verdict.get("lines") or [])[:3]],
+        "sample_games": verdict.get("n", 0),
+        "session": verdict.get("session") or {},
+    }
 
 
 def demo(kind="stop", now=None):
@@ -359,4 +438,5 @@ if __name__ == "__main__":                       # python core/lolqueue.py [test
     print(f"  {session_line(r['session'])}")
     for l in r["lines"]:
         print(f"    [{l['tone']:4}] {l['text']}")
-    print(f"  basis: {r['n']} ranked games, baseline {r['base']}%\n")
+    print(tf("  basis: {games} ranked games, baseline {baseline}%\n",
+             games=r["n"], baseline=r["base"]))

@@ -252,7 +252,8 @@ def build_payload(dd, info, with_suggestions=True):
                 if sugg:
                     seat["sugg"] = sugg
         seats.append(seat)
-    return {"v": 1, "ts": int(time.time()), "patch": dd.get("ver", ""),
+    from smitei18n import lang
+    return {"v": 1, "ts": int(time.time()), "patch": dd.get("ver", ""), "lang": lang(),
             "seats": seats, "enemy": enemy_ids,
             "bans": {"a": bans_my, "e": bans_their}}
 
@@ -374,7 +375,8 @@ def _scout_payload(dd, brief):
                 row["tip"] = tip[:420]
         arows.append(row)
     _ensure_tips(dd, wants)                                # fill missing tips off-thread
-    pay = {"allies": arows, "enemies": [_scout_row(r) for r in enemies],
+    from smitei18n import lang
+    pay = {"lang": lang(), "allies": arows, "enemies": [_scout_row(r) for r in enemies],
            "plan": (brief.get("plan") or [])[:4],
            "wincons": brief.get("wincons") or {}, "me": me}
     th = _threat(enemies)
@@ -566,6 +568,8 @@ def _demo(dd):
 
 def _demo_scout(dd):
     """A believable scout payload for verifying the page's scoreboard view without a game."""
+    from smitei18n import t, tf
+
     def cid(nm):
         return dd["name2id"].get(dd["norm"](nm)) or 0
 
@@ -577,38 +581,65 @@ def _demo_scout(dd):
             r["cg"], r["cw"] = cg, cw
         return r
     allies = [
-        row("You", "Kha'Zix", "JG", "GOLD", "II", 66, [1, 1, 0, 1, 1], 7, 10, 6, 4, 3.1, 82,
-            140000, [["Kha'Zix main · 140k pts", "good"], ["7W in last 10", "good"]], me=True),
+        row(t("You"), "Kha'Zix", "JG", "GOLD", "II", 66, [1, 1, 0, 1, 1], 7, 10, 6, 4, 3.1, 82,
+            140000, [[tf("{champ} main · {points}k pts", champ="Kha'Zix", points=140), "good"],
+                     [tf("{wins}W in last {games}", wins=7, games=10), "good"]], me=True),
         row("Sett Enjoyer", "Sett", "TOP", "SILVER", "I", 88, [1, 0, 0, 1, 0], 4, 10, 8, 4, 2.0, 61,
-            42000, [["comfort · 4-4 on Sett", "neutral"]]),
+            42000, [[tf("comfort · {wins}-{losses} on {champ}",
+                        wins=4, losses=4, champ="Sett"), "neutral"]]),
         row("faker fan99", "Ahri", "MID", "PLATINUM", "IV", 12, [1, 1, 1, 1, 0], 8, 10, 2, 1, 4.2, 88,
-            9000, [["off-champ · 7 of last 10 on Yasuo", "bad"], ["4W heater · on Yasuo", "neutral"]]),
+            9000, [[tf("off-champ · {count} of last {games} on {champ}",
+                       count=7, games=10, champ="Yasuo"), "bad"],
+                   [tf("{count}W heater · on {champ}", count=4, champ="Yasuo"), "neutral"]]),
         row("adcdiff", "Jinx", "BOT", "GOLD", "III", 40, [0, 0, 1, 0, 0], 2, 10, 6, 2, 1.6, 44,
-            88000, [["cold on Jinx · 2-6 recent", "bad"], ["bleeds · 6.8 deaths/game", "bad"]]),
+            88000, [[tf("cold on {champ} · {wins}-{losses} recent",
+                        champ="Jinx", wins=2, losses=6), "bad"],
+                    [tf("bleeds · {deaths} deaths/game", deaths=6.8), "bad"]]),
         row("wardbot", "Thresh", "SUP", "GOLD", "II", 55, [1, 1, 0, 1, 1], 6, 10, 9, 6, 2.9, 74,
-            210000, [["Thresh OTP · 210k pts", "good"]]),
+            210000, [[tf("{champ} OTP · {points}k pts", champ="Thresh", points=210), "good"]]),
     ]
     enemies = [
         row("smurfander", "Darius", "TOP", "GOLD", "IV", 38, [1, 1, 1, 1, 1], 9, 10, 3, 3, 5.1, 88,
-            18000, [["smurf? · lvl 41 · 9-1 · 88 perf", "bad"], ["5W heater", "bad"]]),
+            18000, [[tf("smurf? · {evidence}", evidence=(
+                tf("lvl {level} · {wins}-{losses}", level=41, wins=9, losses=1)
+                + tf(" · {performance} perf", performance=88))), "bad"],
+                    [tf("{count}W heater", count=5), "bad"]]),
         row("jgandiff", "Graves", "JG", "GOLD", "IV", 30, [1, 0, 1, 0, 1], 5, 10, 0, 0, 2.0, 55,
-            60000, [["off-champ · 8 of last 10 on Viego", "bad"]]),
+            60000, [[tf("off-champ · {count} of last {games} on {champ}",
+                        count=8, games=10, champ="Viego"), "bad"]]),
         row("midbeast", "Zed", "MID", "GOLD", "III", 44, [0, 1, 0, 1, 1], 6, 10, 7, 5, 3.4, 79,
-            120000, [["Zed main · 120k pts", "bad"], ["comfort · 5-2 on Zed", "bad"]]),
+            120000, [[tf("{champ} main · {points}k pts", champ="Zed", points=120), "bad"],
+                     [tf("comfort · {wins}-{losses} on {champ}",
+                         wins=5, losses=2, champ="Zed"), "bad"]]),
         row("botlaner", "Caitlyn", "BOT", "SILVER", "II", 61, [0, 0, 0, 1, 0], 3, 10, 4, 1, 1.5, 45,
-            30000, [["cold on Caitlyn · 1-3 recent", "good"], ["4L skid · tilt risk", "good"]]),
+            30000, [[tf("cold on {champ} · {wins}-{losses} recent",
+                        champ="Caitlyn", wins=1, losses=3), "good"],
+                    [tf("{count}L skid · tilt risk", count=4), "good"]]),
         row("supdiff", "Lux", "SUP", "GOLD", "IV", 20, [1, 0, 0, 0, 0], 2, 10, 2, 1, 2.1, 52,
-            15000, [["off-role · MID main", "good"]]),
+            15000, [[tf("off-role · {role} main", role="MID"), "good"]]),
     ]
     allies[0]["lane"] = cid("Darius")           # you (JG) — pair to the enemy top for the demo
-    allies[0]["tip"] = ("Respect Darius level 1-2 — his Q outtrades everything early. Gank him "
-                        "before he snowballs; he has no escape, so a hard collapse post-6 is free.")
-    return {"allies": allies, "enemies": enemies, "me": 0,
-            "threat": {"c": cid("Darius"), "txt": "smurf? · 5W heater"},
-            "plan": ["Enemy is AD-heavy — rush armor / Seeker's, Randuin's on tanks.",
-                     "They out-scale — force early tempo and objectives, end before 3 items."],
-            "wincons": {"win": "end before 25 — turn every kill into towers and objectives",
-                        "lose": "letting it go late — their comp outgrows yours"}}
+    allies[0]["tip"] = t(
+        "Respect Darius level 1-2 — his Q outtrades everything early. Gank him before he "
+        "snowballs; he has no escape, so a hard collapse post-6 is free."
+    )
+    return {
+        "allies": allies,
+        "enemies": enemies,
+        "me": 0,
+        "threat": {
+            "c": cid("Darius"),
+            "txt": tf("smurf? · {evidence}", evidence=tf("{count}W heater", count=5)),
+        },
+        "plan": [
+            t("Enemy is AD-heavy — rush armor / Seeker's, Randuin's on tanks."),
+            t("They out-scale — force early tempo and objectives, end before 3 items."),
+        ],
+        "wincons": {
+            "win": t("end before 25 — turn every kill into towers and objectives"),
+            "lose": t("letting it go late — their comp outgrows yours"),
+        },
+    }
 
 
 def main():

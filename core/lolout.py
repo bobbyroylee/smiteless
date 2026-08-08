@@ -55,6 +55,7 @@ never will.
   python lolout.py        # print every branch from the fixtures
 """
 import lolclose as lcl
+from smitei18n import t, tf
 
 OUT_FROM = 15 * 60.0       # 15:00 — the first surrender window. Before one exists, a
                            # "decided game" is a feeling, not a state.
@@ -107,25 +108,24 @@ def _immediate(ctx):
     contest = dead_n >= 2 or bodies >= 1.0 or e >= E_CONTEST
     baron = ctx.get("baron_secs")
     if baron is not None and baron <= OBJ_LEAD and contest:
-        when = "is up" if baron <= 0 else f"in {_mmss(baron)}"
-        why = (f"{dead_n} of them dead" if dead_n >= 2 else
-               "you win the fight for it" if bodies >= 1.0 else "the fight for it is close")
-        return (f"OUT — baron {when}, and {why}",
-                "baron is the only thing on this map that erases a deficit — group as five "
-                "and take the fight at the pit, not on the way to it",
-                "baron " + ("up" if baron <= 0 else _mmss(baron)))
+        when = t("is up") if baron <= 0 else tf("in {time}", time=_mmss(baron))
+        why = (tf("{count} of them dead", count=dead_n) if dead_n >= 2 else
+               t("you win the fight for it") if bodies >= 1.0 else t("the fight for it is close"))
+        return (tf("OUT — baron {when}, and {reason}", when=when, reason=why),
+                t("baron is the only thing on this map that erases a deficit — group as five and take the fight at the pit, not on the way to it"),
+                tf("baron {when}", when=t("up") if baron <= 0 else _mmss(baron)))
     drake = ctx.get("drake_secs")
     if drake is not None and drake <= OBJ_LEAD and ctx.get("elder") and contest:
-        when = "is up" if drake <= 0 else f"in {_mmss(drake)}"
-        return (f"OUT — elder {when} and it is contestable",
-                "elder execute wins a fight you should lose — stack up and take it as five",
-                "elder " + ("up" if drake <= 0 else _mmss(drake)))
+        when = t("is up") if drake <= 0 else tf("in {time}", time=_mmss(drake))
+        return (tf("OUT — elder {when} and it is contestable", when=when),
+                t("elder execute wins a fight you should lose — stack up and take it as five"),
+                tf("elder {when}", when=t("up") if drake <= 0 else _mmss(drake)))
     if (drake is not None and drake <= SOUL_LEAD and int(ctx.get("my_drakes") or 0) == 3
             and not ctx.get("elder")):
-        when = "is up" if drake <= 0 else f"in {_mmss(drake)}"
-        return (f"OUT — soul point: the drake {when} is yours to take",
-                "soul changes every fight after it — set up early and make this the fight",
-                "soul point")
+        when = t("is up") if drake <= 0 else tf("in {time}", time=_mmss(drake))
+        return (tf("OUT — soul point: the drake {when} is yours to take", when=when),
+                t("soul changes every fight after it — set up early and make this the fight"),
+                t("soul point"))
     return None
 
 
@@ -137,29 +137,26 @@ def _standing(ctx):
     their_death = float(ctx.get("their_death_cost") or 0.0)
     if gt >= LATE_ACE and their_death >= ACE_SECS:
         secs = int(round(their_death))
-        return (f"OUT — one won fight is the map: their deaths cost {secs}s",
-                "stop trading small — group as five, take the fight you choose next to an "
-                "objective, and end it on the timers",
-                f"their deaths {secs}s")
+        return (tf("OUT — one won fight is the map: their deaths cost {seconds}s", seconds=secs),
+                t("stop trading small — group as five, take the fight you choose next to an objective, and end it on the timers"),
+                tf("their deaths {seconds}s", seconds=secs))
     gap = ctx.get("scale_gap")
     items = ctx.get("my_items")
     if gap is not None and float(gap) >= _scale_gap() and gt < LATE_ACE:
-        tail = (f" — you are {int(items)} items in" if items is not None else "")
-        return ("OUT — you out-scale them, so time is on your side" + tail,
-                "modelled off both comps' power curves: farm every safe wave, take every "
-                "neutral, and refuse the fight until you have your third item",
-                "you out-scale")
+        tail = (tf(" — you are {items} items in", items=int(items)) if items is not None else "")
+        return (tf("OUT — you out-scale them, so time is on your side{tail}", tail=tail),
+                t("modelled off both comps' power curves: farm every safe wave, take every neutral, and refuse the fight until you have your third item"),
+                t("you out-scale"))
     # "nothing of yours is open" only counts as an out while it is still a statement about
     # the map: once they have all three turrets in a lane the inhibitor behind it is exposed
     # and the sentence is a technicality, so the read drops to SURVIVE rather than reassure.
     deep = int(ctx.get("their_deepest") or 0)
     if (not (ctx.get("our_open_inhibs") or []) and not ctx.get("nexus_turret")
             and deep < lcl.LANE_TURRETS):
-        tail = (f" — {deep} of your turrets down in their best lane" if deep else "")
-        return ("OUT — nothing of yours is open" + tail,
-                "they are up gold and still have to come get it — defend on your side of "
-                "the river, next to your turrets, and make them force through you",
-                "base intact")
+        tail = (tf(" — {count} of your turrets down in their best lane", count=deep) if deep else "")
+        return (tf("OUT — nothing of yours is open{tail}", tail=tail),
+                t("they are up gold and still have to come get it — defend on your side of the river, next to your turrets, and make them force through you"),
+                t("base intact"))
     return None
 
 
@@ -185,12 +182,13 @@ def _verdict(ctx):
         return None                     # not behind — THE CLOSER owns this half of the map
     trough = min(float(ctx.get("trough", lead)), lead)
     won = max(0.0, lead - trough)
-    won_txt = (f"won back {won / 1000:.1f}k of {abs(trough) / 1000:.1f}k"
+    won_txt = (tf("won back {won:.1f}k of {trough:.1f}k", won=won / 1000,
+                  trough=abs(trough) / 1000)
                if won >= WON_MIN else None)
     card = {"lead": lead, "won": won, "clock_txt": _k(lead), "won_txt": won_txt,
             # the receipt line under the card: the comeback in measured gold, before the
             # scoreboard or anybody's mood can show it.
-            "evidence": (won_txt + " off your worst — that is the comeback, measured"
+            "evidence": (tf("{won} off your worst — that is the comeback, measured", won=won_txt)
                          if won_txt else None)}
     imm = _immediate(ctx)
     ours = ctx.get("our_open_inhibs") or []
@@ -204,15 +202,15 @@ def _verdict(ctx):
     decided = (gt >= CALL_FROM and lead <= -CALL_GOLD and in_base
                and (len(ours) >= 2 or e <= CALL_E))
     if decided and not imm:
-        where = (f"{lcl.LANE_N.get(ours[0][0], '?')} inhib open {_mmss(ours[0][1])}"
-                 if ours else "a nexus turret down")
+        where = (tf("{lane} inhib open {time}", lane=t(lcl.LANE_N.get(ours[0][0], "?")),
+                    time=_mmss(ours[0][1])) if ours else t("a nexus turret down"))
         bits = [f"{_k(lead)}", where]
         if e <= CALL_E:
-            bits.append(f"you lose a 5v5 by {abs(e) / 1000:.1f}k")
+            bits.append(tf("you lose a 5v5 by {gap:.1f}k", gap=abs(e) / 1000))
         card.update(verdict="CALL IT", tone="hold", quiet=False, tag="decided",
-                    line="CALL IT — this one is decided",
-                    sub=" · ".join(bits) + " — the LP is already spent, the minutes are not: "
-                                           "vote to end and put them into the next game")
+                    line=t("CALL IT — this one is decided"),
+                    sub=tf("{facts} — the LP is already spent, the minutes are not: vote to end and put them into the next game",
+                           facts=" · ".join(bits)))
         return card
 
     # ---- 2. a live out with a clock on it. This is the card the app exists to show at the
@@ -236,11 +234,11 @@ def _verdict(ctx):
     # ---- 4. behind, no named path, and not decided either. The honest answer is the one
     #         thing that is always true from behind: do not hand them the next one.
     role = ctx.get("role") or "mid"
-    card.update(verdict="SURVIVE", tone="plan", tag="no free path",
+    card.update(verdict="SURVIVE", tone="plan", tag=t("no free path"),
                 quiet=not (ctx.get("vote_now") and not ctx.get("tempo_urgent")),
-                line="SURVIVE — behind, and there is no free path yet",
-                sub=_HOLD.get(role, _HOLD["mid"]) + " · the only losing move from here is a "
-                                                    "fight you did not have to take")
+                line=t("SURVIVE — behind, and there is no free path yet"),
+                sub=tf("{hold} · the only losing move from here is a fight you did not have to take",
+                       hold=t(_HOLD.get(role, _HOLD["mid"]))))
     return card
 
 
@@ -253,7 +251,7 @@ def row_bits(card):
     bits = [card.get("clock_txt") or ""]
     tag = card.get("tag")
     if tag:
-        bits.append(("out: " + tag) if card.get("verdict") == "OUT" else tag)
+        bits.append(tf("out: {tag}", tag=tag) if card.get("verdict") == "OUT" else tag)
     if card.get("won_txt"):
         bits.append(card["won_txt"])
     return [b for b in bits if b]

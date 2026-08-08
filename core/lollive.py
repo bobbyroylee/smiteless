@@ -606,6 +606,53 @@ def pulse(dd, data=_UNSET):
             "lead": lead}
 
 
+def coach_snapshot(dd, data=_UNSET):
+    """Allowlisted live state; intentionally omits the raw allgamedata document."""
+    if data is _UNSET:
+        data = _read()
+    if not data:
+        return None
+    split = team_split(data)
+    if not split:
+        return None
+    me, allies, enemies, _team = split
+    game_time = float((data.get("gameData") or {}).get("gameTime") or 0.0)
+
+    def player(row):
+        scores = row.get("scores") or {}
+        return {
+            "champion": row.get("championName"), "role": row.get("position"),
+            "level": row.get("level"),
+            "kda": [scores.get("kills", 0), scores.get("deaths", 0), scores.get("assists", 0)],
+            "cs": scores.get("creepScore", 0),
+            "items": [it.get("displayName") or it.get("itemID")
+                      for it in (row.get("items") or [])[:7]],
+            "dead": bool(row.get("isDead")), "respawn_seconds": row.get("respawnTimer", 0),
+        }
+
+    derived = pulse(dd, data) or {}
+    try:
+        import loltempo
+        derived["tempo"] = loltempo.tempo_read(dd, data)
+        derived["respawn"] = loltempo.respawn_plan(dd, data)
+    except Exception:
+        derived.setdefault("tempo", None)
+        derived.setdefault("respawn", None)
+    events = [{"kind": event.get("EventName"), "time": event.get("EventTime")}
+              for event in _events(data)[-12:]]
+    ally_rows = [player(p) for p in allies if p is not me][:4]
+    enemy_rows = [player(p) for p in enemies][:5]
+    for index, row in enumerate(ally_rows, 1):
+        row["slot"] = f"ally_{index}"
+    for index, row in enumerate(enemy_rows, 1):
+        row["slot"] = f"enemy_{index}"
+    self_row = player(me)
+    self_row["slot"] = "self"
+    return {"game_time": round(game_time, 1), "self": self_row,
+            "allies": ally_rows, "enemies": enemy_rows, "events": events,
+            "reads": derived, "source_age_ms": 0}
+
+
 def _fmt(secs):
     if secs <= 0:
         return "UP"

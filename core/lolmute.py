@@ -27,6 +27,7 @@ we wait. The command is never typed into whatever else you're looking at.
 """
 import os, sys, time, json, ssl, ctypes, threading, urllib.request
 from ctypes import wintypes
+from typing import NamedTuple
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("core", "ui", "tools"):
@@ -41,6 +42,7 @@ for _s in ("stdout", "stderr"):
 import smiteconfig as cfg
 import lolimport as limp                     # its _lcu_json is the shared, proven LCU caller
 from lolcreds import _ki, _INP               # raw SendInput plumbing
+from smitei18n import t, tf
 
 CMD = "/fullmute all"
 GAME_CLASS = "RiotWindowClass"
@@ -49,10 +51,14 @@ _LOG = os.path.expanduser("~/.claude/smiteless_mute.log")
 
 _u32 = ctypes.windll.user32
 _k32 = ctypes.windll.kernel32
-_u32.VkKeyScanW.argtypes = [ctypes.c_wchar]
-_u32.VkKeyScanW.restype = ctypes.c_short
-_u32.MapVirtualKeyW.argtypes = [wintypes.UINT, wintypes.UINT]
-_u32.MapVirtualKeyW.restype = wintypes.UINT
+_u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+_u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+_u32.GetKeyboardLayout.argtypes = [wintypes.DWORD]
+_u32.GetKeyboardLayout.restype = ctypes.c_void_p
+_u32.VkKeyScanExW.argtypes = [ctypes.c_wchar, ctypes.c_void_p]
+_u32.VkKeyScanExW.restype = ctypes.c_short
+_u32.MapVirtualKeyExW.argtypes = [wintypes.UINT, wintypes.UINT, ctypes.c_void_p]
+_u32.MapVirtualKeyExW.restype = wintypes.UINT
 _u32.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
 _u32.SendInput.restype = wintypes.UINT
 # 64-bit safety: these return/accept pointers and pointer-sized ints. Left to ctypes' default
@@ -70,7 +76,45 @@ _k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
 _k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
 _PROC_QUERY_LIMITED = 0x1000
 _KEYUP, _SCANCODE = 0x0002, 0x0008
-VK_RETURN, VK_SHIFT, VK_ESCAPE = 0x0D, 0x10, 0x1B
+VK_RETURN, VK_SHIFT, VK_CONTROL, VK_MENU, VK_ESCAPE = 0x0D, 0x10, 0x11, 0x12, 0x1B
+MOD_SHIFT, MOD_CONTROL, MOD_ALT = 0x01, 0x02, 0x04
+KNOWN_MODIFIERS = MOD_SHIFT | MOD_CONTROL | MOD_ALT
+
+SEND_OK = "success"
+SEND_TRANSIENT = "transient"
+SEND_LAYOUT_INCOMPATIBLE = "layout-incompatible"
+
+
+class KeyChord(NamedTuple):
+    char: str
+    vk: int
+    scan: int
+    modifiers: int
+
+
+class LayoutProblem(NamedTuple):
+    hkl: int
+    char: str
+    vk: int | None
+    modifiers: int | None
+    scan: int | None
+    reason: str
+
+
+class ResolvedCommand(NamedTuple):
+    hkl: int
+    chords: tuple
+    enter_scan: int
+    escape_scan: int
+    modifier_scans: tuple
+
+
+class SendResult(NamedTuple):
+    status: str
+    detail: str = ""
+
+    def __bool__(self):
+        return self.status == SEND_OK
 
 # Timings proven by hand against a live client — chat needs a real beat to take keyboard focus
 # after Enter, and a zero-gap character burst gets coalesced.
@@ -138,20 +182,21 @@ def apply(on=True):
     want = MUTED if on else UNMUTED
     before = read_state()
     if before is None:
-        return False, "client not reachable, or it no longer exposes these settings"
+        return False, t("client not reachable, or it no longer exposes these settings")
     try:
         limp._lcu_json("PATCH", SETTINGS_PATH, want)
     except Exception as e:
-        return False, f"PATCH failed: {type(e).__name__}"
+        return False, tf("PATCH failed: {error}", error=type(e).__name__)
     after = read_state()
     if after is None:
-        return False, "could not read the settings back"
+        return False, t("could not read the settings back")
     flat = {f"{g}.{k}": v for g, ks in want.items() for k, v in ks.items()}
     bad = [k for k, v in flat.items() if after.get(k) != v]
     if bad:
-        return False, "the client did not accept: " + ", ".join(bad)
+        return False, tf("the client did not accept: {settings}", settings=", ".join(bad))
     changed = [k for k in flat if before.get(k) != after.get(k)]
-    return True, ("already set" if not changed else "set " + ", ".join(changed))
+    return True, (t("already set") if not changed else
+                  tf("set {settings}", settings=", ".join(changed)))
 
 
 # ---------- layer 1: type it into the game ----------
@@ -183,40 +228,110 @@ def _pid_image(pid):
     return ""
 
 
-def game_focused():
-    """True only when the foreground window IS the League game — window class AND the owning
-    process's image name. Anything we can't positively identify counts as 'not the game'."""
+def _validated_game_window():
+    """Return the foreground League HWND only after class and process validation."""
     try:
         hwnd = _u32.GetForegroundWindow()
         if not hwnd:
-            return False
+            return None
         cls = ctypes.create_unicode_buffer(256)
         _u32.GetClassNameW(hwnd, cls, 256)
         if cls.value != GAME_CLASS:
-            return False
+            return None
         pid = wintypes.DWORD()
         _u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        return _pid_image(pid.value) == GAME_EXE
+        return hwnd if _pid_image(pid.value) == GAME_EXE else None
     except Exception:
-        return False
+        return None
 
 
-def scan_of(ch):
-    """(scan code, needs_shift) for a character on the CURRENT layout, or None."""
-    r = _u32.VkKeyScanW(ch)
+def game_focused():
+    """True only when the foreground window is the validated League game."""
+    return _validated_game_window() is not None
+
+
+def _game_keyboard_layout(hwnd, get_window_thread=None, get_keyboard_layout=None):
+    """Return the HKL owned by the League window thread."""
+    try:
+        get_window_thread = get_window_thread or _u32.GetWindowThreadProcessId
+        get_keyboard_layout = get_keyboard_layout or _u32.GetKeyboardLayout
+        pid = wintypes.DWORD()
+        thread_id = get_window_thread(hwnd, ctypes.byref(pid))
+        if not thread_id:
+            return None
+        hkl = get_keyboard_layout(thread_id)
+        return int(hkl) if hkl else None
+    except Exception:
+        return None
+
+
+def _layout_label(hkl):
+    return f"HKL=0x{int(hkl) & 0xFFFF:04X}"
+
+
+def _problem_detail(problem):
+    vk = "n/a" if problem.vk is None else f"0x{problem.vk:02X}"
+    mods = "n/a" if problem.modifiers is None else f"0x{problem.modifiers:02X}"
+    scan = "n/a" if problem.scan is None else f"0x{problem.scan:02X}"
+    return (f"{_layout_label(problem.hkl)} cannot safely type {problem.char!r}: "
+            f"{problem.reason} (vk={vk}, modifiers={mods}, scan={scan})")
+
+
+def resolve_chord(ch, hkl, vk_key_scan=None, map_virtual=None):
+    """Pure/injectable character-to-scan-code resolution for one explicit HKL."""
+    vk_key_scan = vk_key_scan or _u32.VkKeyScanExW
+    map_virtual = map_virtual or _u32.MapVirtualKeyExW
+    r = int(vk_key_scan(ch, hkl))
     if r == -1:
-        return None
+        return None, LayoutProblem(hkl, ch, None, None, None,
+                                   "VkKeyScanExW returned -1")
     vk, mods = r & 0xFF, (r >> 8) & 0xFF
-    if mods & 0x06:                     # needs Ctrl/AltGr — out of scope, say so honestly
-        return None
-    code = _u32.MapVirtualKeyW(vk, 0)
-    return (code, bool(mods & 0x01)) if code else None
+    if mods & ~KNOWN_MODIFIERS:
+        return None, LayoutProblem(hkl, ch, vk, mods, None,
+                                   "unknown modifier bits")
+    scan = int(map_virtual(vk, 0, hkl))
+    if not scan:
+        return None, LayoutProblem(hkl, ch, vk, mods, scan,
+                                   "MapVirtualKeyExW returned scan code zero")
+    return KeyChord(ch, vk, scan, mods), None
+
+
+def scan_of(ch, hkl=None):
+    """Resolve a character on an explicit HKL (or this thread's layout for diagnostics)."""
+    hkl = hkl or int(_u32.GetKeyboardLayout(0) or 0)
+    chord, _problem = resolve_chord(ch, hkl)
+    return chord
+
+
+def _resolve_command(hkl, command=CMD, resolver=resolve_chord, map_virtual=None):
+    """Resolve the full command and support keys before the first SendInput."""
+    map_virtual = map_virtual or _u32.MapVirtualKeyExW
+    chords = []
+    for ch in command:
+        chord, problem = resolver(ch, hkl)
+        if problem:
+            return None, problem
+        chords.append(chord)
+
+    support = {}
+    for label, vk in (("<Enter>", VK_RETURN), ("<Escape>", VK_ESCAPE),
+                      ("<Shift>", VK_SHIFT), ("<Control>", VK_CONTROL), ("<Alt>", VK_MENU)):
+        scan = int(map_virtual(vk, 0, hkl))
+        if not scan:
+            return None, LayoutProblem(hkl, label, vk, 0, scan,
+                                       "MapVirtualKeyExW returned scan code zero")
+        support[vk] = scan
+    modifiers = ((MOD_SHIFT, support[VK_SHIFT]), (MOD_CONTROL, support[VK_CONTROL]),
+                 (MOD_ALT, support[VK_MENU]))
+    return ResolvedCommand(hkl, tuple(chords), support[VK_RETURN], support[VK_ESCAPE],
+                           modifiers), None
 
 
 def ENTER_SCAN():
     """0x1C. THE bug: this used to go out as a virtual key with wScan=0 and the game ignored
     it, so chat never opened and every following character hit a gameplay bind instead."""
-    return _u32.MapVirtualKeyW(VK_RETURN, 0)
+    hkl = int(_u32.GetKeyboardLayout(0) or 0)
+    return _u32.MapVirtualKeyExW(VK_RETURN, 0, hkl)
 
 
 def _key(code, down=True):
@@ -226,8 +341,36 @@ def _key(code, down=True):
 
 def _tap_scan(code, hold=KEY_HOLD_S):
     _key(code, True)
-    time.sleep(hold)
-    _key(code, False)
+    try:
+        time.sleep(hold)
+    finally:
+        _key(code, False)
+
+
+def _emit_chord(chord, modifier_scans, key_fn=_key, hold=KEY_HOLD_S):
+    """Emit one validated chord and always release keys in reverse order."""
+    scans = dict(modifier_scans)
+    pressed = []
+    key_down = False
+    try:
+        for modifier in (MOD_SHIFT, MOD_CONTROL, MOD_ALT):
+            if chord.modifiers & modifier:
+                pressed.append(scans[modifier])
+                key_fn(scans[modifier], True)
+        key_down = True
+        key_fn(chord.scan, True)
+        time.sleep(hold)
+    finally:
+        if key_down:
+            try:
+                key_fn(chord.scan, False)
+            except Exception:
+                pass
+        for scan in reversed(pressed):
+            try:
+                key_fn(scan, False)
+            except Exception:
+                pass
 
 
 IDLE_MS = 350          # hands off the keyboard/mouse this long before we dare start typing
@@ -343,8 +486,7 @@ _SEND_LOCK = threading.Lock()
 
 
 def send_fullmute():
-    """Open chat, type the command, submit. Every key is a SCAN CODE. Returns True only if the
-    whole command went out uninterrupted.
+    """Open chat, type the command, submit, and classify the result.
 
     Focus is re-checked before EVERY SINGLE CHARACTER, not just per burst. If you alt-tab or
     click (which takes focus off League's chat box) mid-command, the worst case is now ONE
@@ -353,17 +495,19 @@ def send_fullmute():
     _single_instance() makes a second PROCESS impossible."""
     if not _SEND_LOCK.acquire(blocking=False):
         _log("another send is already in flight — refusing to interleave")
-        return False
+        return SendResult(SEND_TRANSIENT, "another send is already in flight")
     try:
-        if not game_focused():
-            return False
-        keys = []
-        for ch in CMD:
-            s = scan_of(ch)
-            if s is None:
-                _log(f"ABORT layout cannot produce {ch!r}")
-                return False
-            keys.append(s)
+        hwnd = _validated_game_window()
+        if not hwnd:
+            return SendResult(SEND_TRANSIENT, "League game is not focused")
+        hkl = _game_keyboard_layout(hwnd)
+        if not hkl:
+            return SendResult(SEND_TRANSIENT,
+                              "could not read the League window keyboard layout")
+        resolved, problem = _resolve_command(hkl)
+        if problem:
+            return SendResult(SEND_LAYOUT_INCOMPATIBLE, _problem_detail(problem))
+        keys = resolved.chords
         # WAIT FOR YOUR HANDS TO BE STILL. Don't start a two-second command while you're
         # mid-click — start it in a gap. Fountain time is full of them.
         waited = 0.0
@@ -371,46 +515,52 @@ def send_fullmute():
             if waited >= IDLE_WAIT_S or not game_focused():
                 _log(f"no quiet moment in {waited:.0f}s (you were still typing/clicking) — "
                      f"not starting; will try again")
-                return False
+                return SendResult(SEND_TRANSIENT, "no quiet input moment")
             time.sleep(0.05)
             waited += 0.05
 
         with _InputGuard() as guard:
             def bail(where, i=None):
-                _tap_scan(_u32.MapVirtualKeyW(VK_ESCAPE, 0))     # close the box we opened
+                _tap_scan(resolved.escape_scan)                  # close the box we opened
                 at = f" after {i} of {len(keys)} characters" if i is not None else ""
                 _log(f"ABORT {where}{at} — chat closed, nothing further typed")
-                return False
+                return SendResult(SEND_TRANSIENT, where)
 
-            _tap_scan(ENTER_SCAN())                     # open chat
+            _tap_scan(resolved.enter_scan)              # open chat
             time.sleep(CHAT_OPEN_S)
             if guard.interrupted:
                 return bail("you pressed something")
             if not game_focused():
                 return bail("lost focus")
-            sh = _u32.MapVirtualKeyW(VK_SHIFT, 0)
-            for i, (code, shift) in enumerate(keys):
+            for i, chord in enumerate(keys):
                 # Checked before EVERY character: your keypress and our command can never
                 # shred each other for more than one keystroke.
                 if guard.interrupted:
                     return bail("you pressed something", i)
                 if not game_focused():
                     return bail("lost focus", i)
-                if shift:
-                    _key(sh, True)
-                _tap_scan(code, KEY_GAP_S)
-                if shift:
-                    _key(sh, False)
+                _emit_chord(chord, resolved.modifier_scans, hold=KEY_GAP_S)
                 time.sleep(KEY_GAP_S)
             time.sleep(PRE_SEND_S)
             if guard.interrupted:
                 return bail("you pressed something before submit")
             if not game_focused():
                 return bail("lost focus before submit")
-            _tap_scan(ENTER_SCAN())                     # submit
-            return True
+            _tap_scan(resolved.enter_scan)              # submit
+            slash = next((chord for chord in keys if chord.char == "/"), None)
+            slash_detail = (f"; '/' vk=0x{slash.vk:02X} modifiers=0x{slash.modifiers:02X} "
+                            f"scan=0x{slash.scan:02X}") if slash else ""
+            return SendResult(SEND_OK, _layout_label(hkl) + slash_detail)
+    except Exception as exc:
+        _log(f"ABORT input emission failed: {type(exc).__name__}")
+        return SendResult(SEND_TRANSIENT, f"input emission failed: {type(exc).__name__}")
     finally:
         _SEND_LOCK.release()
+
+
+def _typed_layer_remains_armed(result):
+    """Only transient failures retry; success and structural layout failure disarm."""
+    return result.status == SEND_TRANSIENT
 
 
 def player_dead():
@@ -470,9 +620,14 @@ def main():
         if armed and FIRE_AT <= gt <= LATE_LIMIT:
             # Window 1: the fountain. You're stationary, chat takes focus cleanly, and this is
             # the attempt that works when the game window is in front.
-            if send_fullmute():
+            result = send_fullmute()
+            if result:
                 armed, waits = False, 0
-                _log(f"TYPED {CMD!r} at gameTime={gt:.1f} (fountain)")
+                _log(f"TYPED {CMD!r} at gameTime={gt:.1f} (fountain); {result.detail}")
+            elif not _typed_layer_remains_armed(result):
+                armed = False
+                _log(f"TYPED LAYER DISARMED for this session — {result.detail}; "
+                     "verified LCU settings remain active")
             else:
                 waits += 1
                 if waits in (1, 5, 10):
@@ -481,9 +636,15 @@ def main():
             # Window 2: while you're DEAD. Past the fountain, typing on the move is what cast
             # Flash — but a dead champion cannot cast, move or attack, so a stray character
             # costs nothing. Every game gives us these, and we take as many as we need.
-            if send_fullmute():
+            result = send_fullmute()
+            if result:
                 armed = False
-                _log(f"TYPED {CMD!r} at gameTime={gt:.1f} (safe window: you were dead)")
+                _log(f"TYPED {CMD!r} at gameTime={gt:.1f} "
+                     f"(safe window: you were dead); {result.detail}")
+            elif not _typed_layer_remains_armed(result):
+                armed = False
+                _log(f"TYPED LAYER DISARMED for this session — {result.detail}; "
+                     "verified LCU settings remain active")
             else:
                 _log(f"death-window attempt at gameTime={gt:.1f} didn't land "
                      f"(alt-tabbed?) — will try the next death", )
@@ -500,11 +661,13 @@ def test():
     """`python core\\lolmute.py test` — type it into the game right now, once, when the game
     window is in front. Note a custom/practice game may refuse the command itself."""
     print(f"Enter scan code : 0x{ENTER_SCAN():02x} (must NOT be 0x00)")
-    print(f"layout          : {'OK' if all(scan_of(c) for c in CMD) else 'FAILED'} for {CMD!r}")
+    print(f"thread layout   : {_layout_label(int(_u32.GetKeyboardLayout(0) or 0))}")
     print("focus the League game window — sending as soon as it's in front (60s)...")
     for _ in range(60):
         if game_focused():
-            print(f"sent={send_fullmute()} — look for the mute confirmation in chat")
+            result = send_fullmute()
+            print(f"sent={bool(result)} ({result.status}: {result.detail}) — "
+                  "look for the mute confirmation in chat")
             return
         time.sleep(1.0)
     print("the game window never came to the front — nothing was typed.")

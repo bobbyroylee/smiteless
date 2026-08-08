@@ -21,6 +21,8 @@ WHAT'S EVIDENCE AND WHAT'S A MODEL, stated plainly:
     most-played page, because a coin-flip read is worse than the default.
 """
 
+from smitei18n import tf
+
 # Keystones whose damage scales with how long a fight lasts, or with the target's HP — the ones
 # that keep working into tanks and bruisers.
 SUSTAINED = {"Conqueror", "Press the Attack", "Grasp of the Undying", "Lethal Tempo"}
@@ -56,9 +58,11 @@ def comp_read(dd, enemy_ids):
             squishy.append(names.get(c, c))
     if len(tanks) >= MIN_TANKS or (len(tanks) + len(fighters)) >= MIN_FRONTLINE:
         front = tanks + fighters
-        return "tank", f"{len(front)} frontline locked ({', '.join(front[:3])})"
+        return "tank", tf("{count} frontline locked ({names})",
+                          count=len(front), names=", ".join(front[:3]))
     if len(tanks) <= MAX_TANKS_SQUISH and len(squishy) >= MIN_SQUISH:
-        return "squish", f"no frontline — {len(squishy)} squishy ({', '.join(squishy[:3])})"
+        return "squish", tf("no frontline — {count} squishy ({names})",
+                            count=len(squishy), names=", ".join(squishy[:3]))
     return None, None
 
 
@@ -85,9 +89,12 @@ def choose(dd, options, enemy_ids):
     if best is None:
         return 0, None
     o, d0 = opts[best], opts[0]
-    reason = (f"{why} — {o.get('keystone')} over {d0.get('keystone')} "
-              f"({o.get('rune_wr', 0):.0f}% on {o.get('rune_play', 0)} games "
-              f"vs {d0.get('rune_wr', 0):.0f}% on {d0.get('rune_play', 0)})")
+    reason = tf("{reason} — {chosen} over {default} "
+                "({chosen_wr:.0f}% on {chosen_games} games "
+                "vs {default_wr:.0f}% on {default_games})",
+                reason=why, chosen=o.get("keystone"), default=d0.get("keystone"),
+                chosen_wr=o.get("rune_wr", 0), chosen_games=o.get("rune_play", 0),
+                default_wr=d0.get("rune_wr", 0), default_games=d0.get("rune_play", 0))
     return best, reason
 
 

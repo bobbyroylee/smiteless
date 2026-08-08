@@ -66,17 +66,62 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SWAP_ROLES = ("top", "jungle", "mid", "adc", "support")   # valid targets for auto-accept role swap
 # auto_pick_swap: "" off / "any" accept-all / "first" / "last" / a specific pick slot "1".."5".
 PICK_SWAP_VALUES = ("any", "first", "last", "1", "2", "3", "4", "5")
+LLM_PROVIDERS = ("claude", "codex")
+LLM_PROVIDER_DEFAULT = "claude"
+# Compatibility aliases for one release. New code must use the general names above.
+MATCHUP_TIP_PROVIDERS = LLM_PROVIDERS
+MATCHUP_TIP_PROVIDER_DEFAULT = LLM_PROVIDER_DEFAULT
+COACH_STT_DEVICES = ("cpu", "cuda")
+COACH_STT_DEVICE_DEFAULT = "cpu"
+COACH_STT_LOAD_POLICIES = ("keep_loaded", "per_question")
+COACH_STT_LOAD_POLICY_DEFAULT = "keep_loaded"
+COACH_STT_MODELS = ("small",)
+COACH_STT_MODEL_DEFAULT = "small"
+
+
+def normalize_llm_provider(value):
+    provider = str(value or "").strip().lower()
+    return provider if provider in LLM_PROVIDERS else LLM_PROVIDER_DEFAULT
+
+
+def normalize_matchup_tip_provider(value):
+    return normalize_llm_provider(value)
+
+
+def _normalize_choice(value, choices, default):
+    selected = str(value or "").strip().lower()
+    return selected if selected in choices else default
+
+
+def normalize_coach_stt_device(value):
+    return _normalize_choice(value, COACH_STT_DEVICES, COACH_STT_DEVICE_DEFAULT)
+
+
+def normalize_coach_stt_load_policy(value):
+    return _normalize_choice(
+        value, COACH_STT_LOAD_POLICIES, COACH_STT_LOAD_POLICY_DEFAULT)
+
+
+def normalize_coach_stt_model(value):
+    return _normalize_choice(value, COACH_STT_MODELS, COACH_STT_MODEL_DEFAULT)
 
 # streak_influence: 0..100, 50 = the original/default behavior (a multiplier m = value/50
 #   scales the enemy form weight, the streak compounding, and the extreme override).
 # gank_threshold: |score| cut for GANK / TOUGH (lower = more lanes tagged).
 # scout_games: recent ranked games pulled per player.
 DEFAULTS = {"streak_influence": 50, "gank_threshold": 6.0, "scout_games": 10, "profile_games": 30,
-            "dragon_volume": 30, "board_size": 70}
+            "dragon_volume": 30, "board_size": 70,
+            "proactive_poll_seconds": 5, "proactive_live_poll_seconds": 2,
+            # Zero is the only supported product setting: no accumulated tip cap.
+            "proactive_global_cooldown": 60, "proactive_max_per_game": 0}
 RANGES = {"streak_influence": (0, 100), "gank_threshold": (3.0, 12.0), "scout_games": (5, 20),
-          "profile_games": (5, 60), "dragon_volume": (0, 100), "board_size": (40, 100)}
+          "profile_games": (5, 60), "dragon_volume": (0, 100), "board_size": (40, 100),
+          "proactive_poll_seconds": (3, 30), "proactive_live_poll_seconds": (1, 10),
+          "proactive_global_cooldown": (60, 600), "proactive_max_per_game": (0, 0)}
 # Feature toggles (read live by the relevant module).
 BOOLS = {"matchup_tips": True,    # generate the AI lane tip in champ-select/in-game
+         "voice_coach": False,    # manual contextual coach (text now; microphone in Phase 3)
+         "proactive_coach": False,  # independent opt-in; remains off unless explicitly enabled
          "gank_kit": True,        # factor YOUR champ's CC/engage into the gank ratings
          "item_widget": True,     # the floating in-game item helper
          "game_intel": True,      # widget: live win read + objective timers + spike alerts
@@ -140,13 +185,19 @@ STRINGS = {"max_elo_main": "",      # MAX ELO: the one champion you play ('' = n
            "max_elo_backup": "",    # ... and the one you take when the main is banned/taken
            "draft_db": "",
            "draft_page": "https://bobbyroylee.github.io/smiteless/draft/",
-           "draft_msg": ""}
+           "draft_msg": "",
+           "ui_lang": "en",         # UI language: en (install default) or pt_BR
+           "coach_stt_device": COACH_STT_DEVICE_DEFAULT,
+           "coach_stt_load_policy": COACH_STT_LOAD_POLICY_DEFAULT,
+           "coach_stt_model": COACH_STT_MODEL_DEFAULT}
 
 
 def load():
     s = dict(DEFAULTS)
     s.update(BOOLS)
     s.update(STRINGS)
+    s["llm_provider"] = LLM_PROVIDER_DEFAULT
+    s["matchup_tip_provider"] = LLM_PROVIDER_DEFAULT
     s["ban_list"] = ["Shyvana"]   # ordered PERMA-BAN priority: highest still-available gets banned
     s["auto_swap_roles"] = []     # champ select: role (position) swaps to auto-accept INTO
     s["auto_pick_swap"] = ""      # champ select pick order: "" off / "any" / "first" / "last"
@@ -163,6 +214,16 @@ def load():
         for k in STRINGS:
             if k in raw:
                 s[k] = str(raw[k]).strip()
+        provider = normalize_llm_provider(
+            raw.get("llm_provider", raw.get("matchup_tip_provider")))
+        s["llm_provider"] = provider
+        s["matchup_tip_provider"] = provider
+        s["coach_stt_device"] = normalize_coach_stt_device(
+            raw.get("coach_stt_device"))
+        s["coach_stt_load_policy"] = normalize_coach_stt_load_policy(
+            raw.get("coach_stt_load_policy"))
+        s["coach_stt_model"] = normalize_coach_stt_model(
+            raw.get("coach_stt_model"))
         if isinstance(raw.get("ban_list"), list):
             s["ban_list"] = [str(x).strip() for x in raw["ban_list"] if str(x).strip()][:10]
         if isinstance(raw.get("auto_swap_roles"), list):
@@ -224,6 +285,19 @@ def save(s):
             clean[k] = str(s[k]).strip()
         elif k not in clean:
             clean[k] = STRINGS[k]
+    provider = normalize_llm_provider(
+        s.get("llm_provider", s.get("matchup_tip_provider",
+              clean.get("llm_provider", clean.get("matchup_tip_provider",
+                                                    LLM_PROVIDER_DEFAULT)))))
+    # Write both during the compatibility window so an older reader sees the same choice.
+    clean["llm_provider"] = provider
+    clean["matchup_tip_provider"] = provider
+    clean["coach_stt_device"] = normalize_coach_stt_device(
+        s.get("coach_stt_device", clean.get("coach_stt_device")))
+    clean["coach_stt_load_policy"] = normalize_coach_stt_load_policy(
+        s.get("coach_stt_load_policy", clean.get("coach_stt_load_policy")))
+    clean["coach_stt_model"] = normalize_coach_stt_model(
+        s.get("coach_stt_model", clean.get("coach_stt_model")))
     if "ban_list" in s:
         clean["ban_list"] = [str(x).strip() for x in (s.get("ban_list") or []) if str(x).strip()][:10]
     elif "ban_list" not in clean:

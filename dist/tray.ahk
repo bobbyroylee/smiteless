@@ -20,6 +20,19 @@ NOAUTO := EnvGet("USERPROFILE") "\.claude\smiteless_noautoopen"   ; present = au
 NOHOME := EnvGet("USERPROFILE") "\.claude\smiteless_nohomeonstart" ; present = open profile/home at startup OFF
 UPDATED_MARK := A_ScriptDir "\.updated_version"
 SETTINGS := EnvGet("USERPROFILE") "\.claude\smiteless_settings.json"   ; read to gate auto-accept
+TRAY_PID := ProcessExist()
+
+UiLang() {
+    global SETTINGS
+    try {
+        if RegExMatch(FileRead(SETTINGS, "UTF-8"), '"ui_lang"\s*:\s*"pt_BR"')
+            return "pt_BR"
+    }
+    return "en"
+}
+Tr(en, pt) {
+    return UiLang() = "en" ? en : pt
+}
 
 if FileExist(ICO)
     TraySetIcon(ICO)
@@ -27,31 +40,62 @@ A_IconTip := "Smiteless"
 
 tray := A_TrayMenu
 tray.Delete()
-tray.Add("Open overlay", (*) => Launch("overlay"))
-tray.Add("Profile / home", (*) => Launch("profile"))
-tray.Add("Item widget", (*) => Launch("widget"))
+MENU_OVERLAY := Tr("Open overlay", "Abrir overlay")
+MENU_PROFILE := Tr("Profile / home", "Perfil / início")
+MENU_WIDGET := Tr("Item widget", "Widget de itens")
+MENU_COACH := Tr("Coach", "Coach")
+MENU_ASK_COACH := Tr("Ask coach", "Perguntar ao coach")
+MENU_HIDE_COACH := Tr("Hide coach", "Ocultar coach")
+MENU_AUTO := Tr("Auto-open at champ select", "Abrir automaticamente na seleção de campeão")
+MENU_UPDATES := Tr("Check for updates", "Buscar atualizações")
+MENU_RELOAD := Tr("Reload", "Recarregar")
+MENU_EXIT := Tr("Exit", "Sair")
+tray.Add(MENU_OVERLAY, (*) => Launch("overlay"))
+tray.Add(MENU_PROFILE, (*) => Launch("profile"))
+tray.Add(MENU_WIDGET, (*) => Launch("widget"))
+tray.Add(MENU_COACH, (*) => Launch("coach show"))
+tray.Add(MENU_ASK_COACH, (*) => Launch("coach toggle"))
+tray.Add(MENU_HIDE_COACH, (*) => Launch("coach hide"))
 loginMenu := Menu()
-tray.Add("Riot login", loginMenu)
-tray.Add("Settings", (*) => Launch("settings"))
+tray.Add(Tr("Riot login", "Login Riot"), loginMenu)
+tray.Add(Tr("Settings", "Configurações"), (*) => Launch("settings"))
 tray.Add()
-tray.Add("Auto-open at champ select", ToggleAuto)
-tray.Add("Usage stats", (*) => Launch("stats"))
-tray.Add("Patch notes", (*) => Launch("notes"))
-tray.Add("Check for updates", (*) => Launch("update --force"))
+tray.Add(MENU_AUTO, ToggleAuto)
+tray.Add(Tr("Usage stats", "Estatísticas de uso"), (*) => Launch("stats"))
+tray.Add(Tr("Patch notes", "Notas da atualização"), (*) => Launch("notes"))
+tray.Add(MENU_UPDATES, (*) => Launch("update --force"))
 tray.Add()
-tray.Add("Reload", (*) => Reload())
-tray.Add("Exit", (*) => ExitApp())
-tray.Default := "Open overlay"
+tray.Add(MENU_RELOAD, (*) => Reload())
+tray.Add(MENU_EXIT, (*) => ExitApp())
+tray.Default := MENU_OVERLAY
 RefreshAutoCheck()
 ShowPostUpdate()
+Launch("coach serve --owner-pid " TRAY_PID)
+OnExit(StopCoach)
 
-; Global hotkeys: Ctrl+Alt+X = overlay, Ctrl+Alt+B = item widget
+; Global hotkeys: Ctrl+Alt+X = overlay, Ctrl+Alt+B = item widget, Ctrl+Alt+C = coach
 ^!x::Launch("overlay")
 ^!b::Launch("widget")
+^!c::Launch("coach toggle")
 
 Launch(cmd) {
     global APP
     Run('"' APP '" ' cmd, , "Hide")
+}
+
+StopCoach(*) {
+    token := CoachToken()
+    if (token != "")
+        Launch('coach shutdown --endpoint-token="' token '"')
+}
+
+CoachToken() {
+    endpoint := EnvGet("USERPROFILE") "\.claude\cache\smiteless_coach_endpoint.json"
+    try {
+        if RegExMatch(FileRead(endpoint, "UTF-8"), '"token"\s*:\s*"([^"]+)"', &m)
+            return m[1]
+    }
+    return ""
 }
 
 ; --- "Riot login" submenu: one item per saved account session (managed in Settings). ---
@@ -99,11 +143,11 @@ ToggleAuto(*) {
 }
 
 RefreshAutoCheck() {
-    global NOAUTO
+    global NOAUTO, MENU_AUTO
     if FileExist(NOAUTO)
-        A_TrayMenu.Uncheck("Auto-open at champ select")
+        A_TrayMenu.Uncheck(MENU_AUTO)
     else
-        A_TrayMenu.Check("Auto-open at champ select")
+        A_TrayMenu.Check(MENU_AUTO)
 }
 
 ShowPostUpdate() {
@@ -136,7 +180,7 @@ AutoUpdateOnLaunch() {
 ; boot). Entirely IN-PROCESS (WinHttp straight to the GitHub API - no app spawn, no cursor
 ; flash). It renames the menu item to "Update to vX"; that click runs the one-click installer.
 g_updateVer := ""
-g_updLabel := "Check for updates"
+g_updLabel := MENU_UPDATES
 CheckUpdate() {
     global g_updateVer, g_updLabel
     tag := ""
@@ -159,7 +203,7 @@ CheckUpdate() {
     ver := tag
     if (ver != g_updateVer) {
         g_updateVer := ver
-        newLabel := "Update to " ver
+        newLabel := Tr("Update to ", "Atualizar para ") ver
         try A_TrayMenu.Rename(g_updLabel, newLabel)
         g_updLabel := newLabel
         A_IconTip := "Smiteless  -  update " ver " available"

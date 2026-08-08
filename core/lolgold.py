@@ -73,6 +73,8 @@ the habit, straight out of the behavior ledger, so it is your data talking and n
 import math
 import time
 
+from smitei18n import t, tf
+
 # ---- the minion schedule (wiki "Minion (League of Legends)", checked 2026-07-29) ----
 WAVE_FIRST = 65.0          # first wave leaves the fountain at 1:05
 WAVE_EVERY = 30.0          # ...and one every 30s after
@@ -98,7 +100,7 @@ CANNON_LEAD = 14.0         # warn this many seconds before a siege minion arrive
 CARD_SECS = 11.0           # how long a MISS keeps the directive slot before going quiet again
 _EV_TTL = 600.0            # re-read the behavior ledger at most this often
 
-_EV = {"t": 0.0, "text": None}
+_EV = {"t": 0.0, "raw": None}
 _CSG = {"v": None}
 
 
@@ -124,18 +126,18 @@ def _evidence():
     or None when the ledger doesn't have both sides yet. Cached - it's a disk read and this
     is called from a 1s poll loop."""
     now = time.monotonic()
-    if _EV["text"] is not None and (now - _EV["t"]) < _EV_TTL:
-        return _EV["text"]
-    txt = None
+    if _EV["raw"] is not None and (now - _EV["t"]) < _EV_TTL:
+        return tf("your games under {cs} CS at 10:00 — {evidence}",
+                  cs=BAR_CS10, evidence=_EV["raw"])
+    raw = None
     try:
         import lolprofile as lp
         raw = lp.pattern_evidence("weak_first_ten")
-        if raw:                       # "with it: 3W-9L · without: 11W-5L" — name what "it" is
-            txt = f"your games under {BAR_CS10} CS at 10:00 — " + raw
     except Exception:
-        txt = None
-    _EV["t"], _EV["text"] = now, txt
-    return txt
+        raw = None
+    _EV["t"], _EV["raw"] = now, raw
+    return (tf("your games under {cs} CS at 10:00 — {evidence}",
+               cs=BAR_CS10, evidence=raw) if raw else None)
 
 
 # ------------------------------------------------------------------ the wave schedule ----
@@ -264,13 +266,16 @@ def _verdict(ctx):
     need = target - eq
     left = max(0.0, off_dl - offer)
     if need <= 0:
-        plan = f"on the {int(round(target))} by {_mmss(dl)} — hold this rate"
+        plan = tf("on the {target} by {deadline} — hold this rate",
+                  target=int(round(target)), deadline=_mmss(dl))
         recoverable = True
     elif left <= 0 or need > left:
-        plan = f"{int(round(need))} short of {int(round(target))} with {int(left)} minions left"
+        plan = tf("{need} short of {target} with {left} minions left",
+                  need=int(round(need)), target=int(round(target)), left=int(left))
         recoverable = False
     else:
-        plan = f"you need {int(round(need))} of the next {int(left)} minions ({need / left:.0%})"
+        plan = tf("you need {need} of the next {left} minions ({rate:.0%})",
+                  need=int(round(need)), left=int(left), rate=need / left)
         recoverable = True
 
     under = rate < br
@@ -280,9 +285,13 @@ def _verdict(ctx):
     # nothing). Most important first.
     #   `30+44 of 82` = 30 CS plus the 44 CS-worth of gold your kills were - the count the
     #   verdict is actually computed on, never hidden behind a percentage.
-    lead = f"{cs} of {int(offer)}" if eq - cs < 1 else f"{cs}+{int(round(eq - cs))} of {int(offer)}"
-    bits = [lead, f"{rate:.0%}",
-            f"on track for {int(round(proj))}" + (f", bar {int(round(target))}" if under else "")]
+    lead = (tf("{cs} of {offer}", cs=cs, offer=int(offer)) if eq - cs < 1 else
+            tf("{cs}+{equiv} of {offer}", cs=cs, equiv=int(round(eq - cs)),
+               offer=int(offer)))
+    projection = (tf("on track for {proj}, bar {target}",
+                     proj=int(round(proj)), target=int(round(target))) if under else
+                  tf("on track for {proj}", proj=int(round(proj))))
+    bits = [lead, f"{rate:.0%}", projection]
     row = " · ".join(bits)
     card = {"cs": cs, "eq": round(eq, 1), "offer": int(offer), "pct": round(rate, 3),
             "proj": int(round(proj)), "behind": round(behind, 1), "missed": int(round(missed)),
@@ -292,7 +301,7 @@ def _verdict(ctx):
             "recoverable": recoverable, "ahead": rate >= gr, "under": under,
             "row": row, "bits": bits,
             "clock_txt": None}
-    fix = (_FIX if recoverable else _LOST).get(role, _FIX["mid"])
+    fix = t((_FIX if recoverable else _LOST).get(role, _FIX["mid"]))
     # A live objective verdict outranks a dropped wave, every time: the grub fight IS the
     # reason you left the wave. When the tempo engine has the card, this keeps its row and
     # says nothing louder — but the row still reads `under`, because you still are.
@@ -305,23 +314,26 @@ def _verdict(ctx):
     #         is a number you stop believing.
     if speak and ctx.get("leaked"):
         card.update(verdict="MISS", tone="hold", quiet=False,
-                    line=(f"MISS — that wave went by · on track for {int(round(proj))} "
-                          f"at {_mmss(dl)}, bar {int(round(target))}"),
-                    sub=f"{plan} · {fix}")
+                    line=tf("MISS — that wave went by · on track for {proj} at "
+                            "{deadline}, bar {target}",
+                            proj=int(round(proj)), deadline=_mmss(dl),
+                            target=int(round(target))),
+                    sub=tf("{plan} · {instruction}", plan=plan, instruction=fix))
         return card
 
     # ---- 2. the biggest single object in lane phase is about to land and you're behind it.
     nc = ctx.get("cannon_in")
     if speak and nc is not None and 0 <= float(nc) <= CANNON_LEAD:
         card.update(verdict="CANNON", tone="plan", quiet=False,
-                    line=f"CANNON — siege minion lands in {int(round(float(nc)))}s ({G_CANNON}g)",
-                    sub=f"be on the wave, not walking to it · {plan}")
+                    line=tf("CANNON — siege minion lands in {seconds}s ({gold}g)",
+                            seconds=int(round(float(nc))), gold=G_CANNON),
+                    sub=tf("be on the wave, not walking to it · {plan}", plan=plan))
         return card
 
     # ---- 3. the quiet row. One line, all game, never a card: this is a number you want to
     #         be able to glance at, not a coach clearing its throat every thirty seconds.
     card.update(verdict="PACE", tone="hold" if under else "plan", quiet=True,
-                line=f"PACE — {row}", sub=plan)
+                line=tf("PACE — {row}", row=row), sub=plan)
     return card
 
 

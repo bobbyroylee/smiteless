@@ -25,7 +25,9 @@ UA = "Smiteless-Updater"
 try:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
     import smiteskin as skin
+    from smitei18n import t
 except Exception:
+    t = lambda msgid: msgid
     class skin:
         VOID = "#0c0a13"; TXT = "#e8e3f4"; MUTED = "#9a92b4"
         EMBER = "#ffb454"; EMBER_DEEP = "#c77f2e"; RAISED = "#1e1930"; HOVER = "#2a2342"
@@ -116,7 +118,7 @@ def _run_setup(cur, tag, url, with_progress=False):
             import tkinter as tk
             from tkinter import ttk
             prog = tk.Tk()
-            prog.title("Smiteless update")
+            prog.title(t("Smiteless update"))
             prog.configure(bg=skin.VOID)
             skin.dark_titlebar(prog)
             prog.resizable(False, False)
@@ -126,7 +128,7 @@ def _run_setup(cur, tag, url, with_progress=False):
                 pass
             frm = tk.Frame(prog, bg=skin.VOID)
             frm.pack(padx=18, pady=14)
-            tk.Label(frm, text=f"Updating to {tag}", fg=skin.EMBER, bg=skin.VOID,
+            tk.Label(frm, text=t("Updating to {tag}").format(tag=tag), fg=skin.EMBER, bg=skin.VOID,
                      font=skin.display(11, bold=True)).pack(anchor="w")
             update_text = tk.StringVar(value="Preparing update...")
             tk.Label(frm, textvariable=update_text, fg=skin.TXT, bg=skin.VOID,
@@ -189,7 +191,7 @@ def _run_setup(cur, tag, url, with_progress=False):
 def _dialog(cur, tag, url):
     import tkinter as tk
     root = tk.Tk()
-    root.title("Smiteless update")
+    root.title(t("Smiteless update"))
     root.configure(bg=skin.VOID)
     skin.dark_titlebar(root)
     root.resizable(False, False)
@@ -199,9 +201,9 @@ def _dialog(cur, tag, url):
         pass
     wrap = tk.Frame(root, bg=skin.VOID)
     wrap.pack(padx=18, pady=16)
-    tk.Label(wrap, text="A new version of Smiteless is available",
+    tk.Label(wrap, text=t("A new version of Smiteless is available"),
              font=skin.display(12, bold=True), fg=skin.EMBER, bg=skin.VOID).pack(anchor="w")
-    tk.Label(wrap, text=f"You have {cur}.  Latest is {tag}.",
+    tk.Label(wrap, text=t("You have {current}.  Latest is {latest}.").format(current=cur, latest=tag),
              font=skin.body(9), fg=skin.TXT, bg=skin.VOID).pack(anchor="w", pady=(4, 12))
     btns = tk.Frame(wrap, bg=skin.VOID)
     btns.pack(anchor="e")
@@ -220,11 +222,11 @@ def _dialog(cur, tag, url):
         else:
             _info("Update started. Smiteless will restart automatically when installation finishes.")
 
-    later_btn = tk.Button(btns, text="Later", width=10, command=root.destroy,
+    later_btn = tk.Button(btns, text=t("Later"), width=10, command=root.destroy,
                           bg=skin.RAISED, fg=skin.TXT, activebackground=skin.HOVER,
                           relief="flat", font=skin.body(9))
     later_btn.pack(side="right", padx=(8, 0))
-    update_btn = tk.Button(btns, text="Update now", width=12, command=do_update,
+    update_btn = tk.Button(btns, text=t("Update now"), width=12, command=do_update,
                            bg=skin.EMBER, fg=skin.VOID, activebackground=skin.EMBER_DEEP,
                            relief="flat", font=skin.body(9, bold=True))
     update_btn.pack(side="right")

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "model": {
+    "name": "small",
+    "multilingual": true,
+    "repository": "Systran/faster-whisper-small",
+    "revision": "536b0662742c02347bc0e980a01041f333bce120"
+  },
+  "format": {
+    "name": "CTranslate2",
+    "format_version": 1,
+    "runtime_version": "4.8.1"
+  },
+  "cache": {
+    "directory": "whisper-small",
+    "compatibility_key": "small-536b0662-ctranslate2-v1"
+  },
+  "files": [
+    {
+      "path": "config.json",
+      "size": 2370,
+      "sha256": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828"
+    },
+    {
+      "path": "model.bin",
+      "size": 483546902,
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 2203239,
+      "sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab"
+    },
+    {
+      "path": "vocabulary.txt",
+      "size": 459861,
+      "sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+    }
+  ]
+}

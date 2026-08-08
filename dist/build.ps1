@@ -4,9 +4,7 @@
 #
 # Needs (on the BUILD machine only - not the user's): Python with PyInstaller
 # (`pip install pyinstaller`), and AutoHotkey v2 + Ahk2Exe. Output: build\SmitelessSetup.exe
-param(
-    [string]$Python = "python"
-)
+param([string]$Python = "python")
 $ErrorActionPreference = "Stop"
 $repo  = Split-Path $PSScriptRoot -Parent
 $build = Join-Path $repo "build"
@@ -33,10 +31,10 @@ Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 Write-Host "==> freeze Python app (PyInstaller)" -ForegroundColor Cyan
-$hidden = @("smiteoverlay","smitewidget","smitedead","smiteload","smitequeue","smitesettings","smiteprofile","phasecheck","smiteupdate","smitestats","smitekeycheck","selftest",
+$hidden = @("smiteoverlay","smitewidget","smitedead","smiteload","smitequeue","smitesettings","smiteprofile","smitecoach","phasecheck","smiteupdate","smitestats","smitekeycheck","selftest","smitemicworker","smitewhisperworker",
             "loldead","lolload","loltags","lolqueue","lolmute","lolreentry","lolbleed","lolclose","lolgold","lolward","lolout","lolfix","lolpool","lolfit","lolrunes",
-            "smitecard","smiteconfig","lolbuild","lolgame","lolscout","lolmatchup","lolitems",
-            "lollive","lolvision","lolprofile","lolaccounts","lolcreds","claudecli",
+            "smitecard","smiteconfig","smitei18n","i18n_pt_BR","smiteaudio","smitestt","smitewhispermodel","lolbuild","lolgame","lolcoachcontext","lolcoachsession","lolcoachipc","lolcoachprompt","lolcoachproactive","lolcoachtools","lolscout","lolmatchup","lolitems",
+            "lollive","lolvision","lolprofile","lolaccounts","lolcreds","claudecli","codexcli","llmcli","llmprocess",
             "lolugg","lollocal",   # scout fallback (u.gg) + your history off the client (LCU)
             # These five were reachable only through top-level imports of other modules, i.e. by
             # luck. selftest now asserts every core/ and ui/ module is listed here, because a
@@ -44,10 +42,15 @@ $hidden = @("smiteoverlay","smitewidget","smitedead","smiteload","smitequeue","s
             # the very feature it is named for.
             "loldraft","lolimport","loltempo","smiteskin","smitenotes",
             "comtypes","comtypes.client","comtypes.gen","winsound","wave","PIL._tkinter_finder")
-$pyiArgs = @("--noconfirm","--onedir","--windowed","--name","SmitelessApp","--icon",$ico,
+$pyiArgs = @("--noconfirm","--onedir","--console","--hide-console","hide-early","--name","SmitelessApp","--icon",$ico,
              "--paths",(Join-Path $repo "core"),"--paths",(Join-Path $repo "ui"),"--paths",(Join-Path $repo "tools"),
              "--distpath",(Join-Path $build "pyi"),"--workpath",(Join-Path $build "pyiwork"),"--specpath",$build)
 foreach ($h in $hidden) { $pyiArgs += @("--hidden-import",$h) }
+$pyiArgs += @("--collect-all","faster_whisper","--collect-binaries","ctranslate2",
+              "--collect-binaries","_sounddevice_data",
+              "--copy-metadata","faster-whisper","--copy-metadata","ctranslate2",
+              "--copy-metadata","sounddevice",
+              "--add-data",((Join-Path $repo "assets\whisper-small-manifest.json") + ";assets"))
 $pyiArgs += (Join-Path $repo "smiteless_main.py")
 & $Python -m PyInstaller @pyiArgs
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
@@ -61,6 +64,7 @@ New-Item -ItemType Directory -Force (Join-Path $stage "assets") | Out-Null
 Copy-Item $ico (Join-Path $stage "assets\smiteless.ico")
 Copy-Item (Join-Path $repo "VERSION") (Join-Path $stage "VERSION")
 Copy-Item (Join-Path $repo "CHANGELOG.md") (Join-Path $stage "CHANGELOG.md")   # Patch notes window reads this
+Copy-Item (Join-Path $repo "CHANGELOG.pt_BR.md") (Join-Path $stage "CHANGELOG.pt_BR.md")
 
 Write-Host "==> zip payload" -ForegroundColor Cyan
 $payload = Join-Path $repo "dist\payload.zip"   # next to installer.ahk for FileInstall

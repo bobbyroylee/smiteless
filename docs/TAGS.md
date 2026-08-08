@@ -1,5 +1,12 @@
 # Player-tag specification
 
+## Display language
+
+English source strings remain the implementation keys. In this Brazilian fork, tags display
+in PT-BR (for example, `fora do campeão`, `primeira vez com {champ}?`, `sequência de 9V`);
+champion names, stable game abbreviations, and all numeric evidence are kept unchanged. The
+evidence rules below apply in either UI language.
+
 The tag system is the credibility core of the scout. Every tag is a **claim** backed by
 **named evidence** that meets a **numeric threshold** — if the evidence isn't there, the tag
 doesn't render. The tag text itself always cites its evidence (`smurf? · lvl 44 · 8-2`),
@@ -14,9 +21,9 @@ Two kinds of claims, never conflated:
 
 The canonical failure this spec exists to prevent: a Morgana one-trick on a 9-win Morgana
 streak queues up on **Brand** and goes 1/8. Account-wide evidence (win streak, few season
-games) must never render as a this-game judgment ("SMURF"). The correct output is
-`off-champ · 9 of last 10 on Morgana` + `9W heater · on Morgana` — true, and it tells you
-the 1/8 is coming.
+games) must never render as a this-game judgment ("SMURF"). In PT-BR, the correct output is
+`fora do campeão · 9 das últimas 10 com Morgana` + `9V em sequência · com Morgana` — true,
+and it tells you the 1/8 is coming.
 
 Data inputs (all from the player's real match history / Riot API, never rank-peeking or
 W/L moralizing — player *quality* judgments only ever come from the perf grade

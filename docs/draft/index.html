@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DraftBoard — live champ select</title>
-<meta name="description" content="Live champ-select board: picks, bans, and per-seat champion suggestions with runes. Sent from Smiteless.">
+<title>DraftBoard — seleção de campeão ao vivo</title>
+<meta name="description" content="Painel ao vivo da seleção: escolhas, banimentos e sugestões por jogador com runas. Enviado pelo Smiteless.">
 <style>
 /* Duskfall (the Smiteless design system, see docs/UIDESIGN.md) — deliberately dark-only:
    League client at dusk, lit by an ember. Tokens mirror core/smiteskin.py. */
@@ -311,20 +311,20 @@ footer{margin-top:30px;color:var(--faint);font-size:12px;display:flex;gap:8px;
 <div class="wrap">
   <header>
     <div class="mark">D</div>
-    <div class="title">DRAFTBOARD<small id="headsub">live champ select</small></div>
+    <div class="title">DRAFTBOARD<small id="headsub">seleção de campeão ao vivo</small></div>
     <div class="spacer"></div>
     <span class="chip warn" id="threat" hidden><span id="threattxt"></span></span>
     <span class="chip" id="patch" hidden><span id="patchtxt"></span></span>
-    <span class="chip" id="status"><span class="dot"></span><span id="statustxt">connecting</span></span>
+    <span class="chip" id="status"><span class="dot"></span><span id="statustxt">conectando</span></span>
   </header>
-  <p class="tagline" id="tagline">Sent from champ select by a teammate running
-    <a href="https://github.com/bobbyroylee/smiteless" rel="noopener">Smiteless</a> (free, open
-    source). Hit <b style="color:var(--ember)">This is me</b> on your seat for picks &amp; runes
-    tuned to this draft — it updates live as the lobby locks in.</p>
+  <p class="tagline" id="tagline">Enviado da seleção por um aliado usando
+    <a href="https://github.com/bobbyroylee/smiteless" rel="noopener">Smiteless</a> (gratuito e de
+    código aberto). Clique em <b style="color:var(--ember)">Este sou eu</b> no seu card para receber
+    escolhas e runas ajustadas ao draft — a página atualiza ao vivo conforme a sala confirma.</p>
   <div id="app"></div>
   <footer>
-    <span>No accounts, no tracking — this page only reads the draft your teammate published.</span>
-    <span>·</span><a href="https://github.com/bobbyroylee/smiteless" rel="noopener">get Smiteless</a>
+    <span>Sem contas ou rastreamento — esta página apenas lê o draft publicado pelo seu aliado.</span>
+    <span>·</span><a href="https://github.com/bobbyroylee/smiteless" rel="noopener">obter Smiteless</a>
   </footer>
 </div>
 
@@ -337,13 +337,14 @@ const DD = "https://ddragon.leagueoflegends.com";
    works: the link just includes &db= and it overrides this default. */
 const DEFAULT_DB = "smiteless-draft-default-rtdb.firebaseio.com";
 const H = (() => {
-  const out = {d:"", db:"", demo:location.hash.replace("#","") === "demo", me:false};
+  const out = {d:"", db:"", demo:location.hash.replace("#","") === "demo", me:false, lang:""};
   for (const kv of location.hash.replace(/^#/,"").split("&")) {
     const [k, v] = kv.split("=");
     if (k === "d") out.d = decodeURIComponent(v || "");
     if (k === "db") out.db = decodeURIComponent(v || "");
     if (k === "demo") out.demo = true;
     if (k === "me") out.me = true;           // present ONLY on the publisher's own auto-opened
+    if (k === "lang") out.lang = v === "en" ? "en" : "pt_BR";
   }                                          //   link -> that viewer is "me"; teammates' link omits it
   if (!out.db) out.db = DEFAULT_DB;          // no &db= in the link -> this page's own DB
   return out;
@@ -357,10 +358,64 @@ const SPELLS = {1:"Cleanse",3:"Exhaust",4:"Flash",6:"Ghost",7:"Heal",11:"Smite",
 const SHARDS = {5001:"+HP",5002:"+Armor",5003:"+MR",5005:"+AS",5007:"+AH",5008:"+AF",
                 5010:"+MS",5011:"+HP",5013:"+Tenacity"};
 const TREES = {8000:"Precision",8100:"Domination",8200:"Sorcery",8300:"Inspiration",8400:"Resolve"};
+const UI = {
+  pt_BR:{
+    connecting:"conectando",live:"ao vivo",over:"draft encerrado",err:"draft não encontrado",
+    up:"PRONTO",scout:"análise ao vivo",select:"seleção de campeão ao vivo",
+    title:"DraftBoard — seleção de campeão ao vivo",
+    description:"Painel ao vivo da seleção: escolhas, banimentos e sugestões por jogador com runas. Enviado pelo Smiteless.",
+    tagline:"Enviado da seleção por um aliado usando {link} (gratuito e de código aberto). Clique em <b>Este sou eu</b> no seu card para receber escolhas e runas ajustadas a este draft — a página atualiza ao vivo conforme a sala confirma.",
+    footer:"Sem contas ou rastreamento — esta página apenas lê o draft publicado pelo seu aliado.",
+    get:"obter Smiteless",none:"nenhum ainda",ourBans:"Nossos banimentos",theirBans:"Banimentos inimigos",
+    tier:"nível",runes:"Runas",keystone:"runa principal",spell:"feitiço",item:"item",yourLock:"sua escolha",
+    picking:"escolhendo…",unclaim:"✓ eu — desfazer",thisIsMe:"Este sou eu",crunching:"calculando sugestões…",
+    goodHere:"bons aqui:",unranked:"Sem elo",gradeTitle:"nota de desempenho (como joga, não V/D)",
+    points:"{n} mil pts",me:"✓ eu",gank:"GANK",vs:"vs",yourLane:"Sua rota",
+    you:"você",noTip:"Ainda não há dica escrita para esta rota — jogue o básico: acompanhe recargas, respeite picos de poder e troque quando estiverem sem recursos.",
+    noOpponent:"Oponente da rota ainda não identificado.",win:"VENCER",lose:"PERDER",
+    noLane:"sem oponente de rota",yourTeam:"SEU TIME",tapCard:"clique no seu card",forLane:"para sua rota",
+    enemy:"INIMIGO",gamePlan:"Plano de jogo",noWindow:"sem janela limpa — farme no ritmo e prepare o próximo objetivo",
+    winLabel:"Vitória",enemyJg:"Caçador inimigo",isLevel:"está nível {n}",yourLaneLevel:"(sua rota {n})",
+    notFound:"Draft não encontrado.",retired:"A sala pode ter terminado — drafts são publicados apenas enquanto a seleção está aberta e depois são removidos.",
+    loading:"Carregando o draft…",patch:"versão {n}",
+    scoutTagline:"A sala inteira analisada — elo, forma recente e como cada conta realmente joga, com base no histórico público. Compartilhado pelo {link}.",
+    watch:"⚠ atenção em {champ}{detail}",scouting:"Analisando a sala…",
+    noEnemyLocks:"nenhuma escolha inimiga ainda",demo:"DEMO — uma seleção simulada. Em uma sala real, esta página transmite o draft ao vivo (a arte vem da CDN da Riot).",
+    enemyLocks:"Escolhas inimigas",enemyHint:"A Riot oculta funções e nomes inimigos na seleção — apenas escolhas confirmadas."
+  },
+  en:{
+    connecting:"connecting",live:"live",over:"draft ended",err:"draft not found",up:"UP",
+    scout:"live scout",select:"live champ select",title:"DraftBoard — live champ select",
+    description:"Live champ-select board: picks, bans, and per-seat champion suggestions with runes. Sent from Smiteless.",
+    tagline:"Sent from champ select by a teammate running {link} (free, open source). Hit <b>This is me</b> on your seat for picks &amp; runes tuned to this draft — it updates live as the lobby locks in.",
+    footer:"No accounts, no tracking — this page only reads the draft your teammate published.",
+    get:"get Smiteless",none:"none yet",ourBans:"Our bans",theirBans:"Their bans",tier:"tier",
+    runes:"Runes",keystone:"keystone",spell:"spell",item:"item",yourLock:"your lock",
+    picking:"picking…",unclaim:"✓ me — unclaim",thisIsMe:"This is me",crunching:"crunching suggestions…",
+    goodHere:"good here:",unranked:"Unranked",gradeTitle:"performance grade (how they play, not W/L)",
+    points:"{n}k pts",me:"✓ me",gank:"GANK",vs:"vs",yourLane:"Your lane",
+    you:"you",noTip:"No written matchup tip for this lane yet — play the fundamentals: track their cooldowns, respect their power spikes, and trade when they're down.",
+    noOpponent:"Lane opponent not identified yet.",win:"WIN",lose:"LOSE",noLane:"no lane opponent",
+    yourTeam:"YOUR TEAM",tapCard:"tap your card",forLane:"for your lane",enemy:"ENEMY",gamePlan:"Game plan",
+    noWindow:"no clean window — farm tempo, set up the next objective",winLabel:"Win",enemyJg:"Enemy JG",
+    isLevel:"is lvl {n}",yourLaneLevel:"(your lane {n})",notFound:"Draft not found.",
+    retired:"The lobby may be over — drafts are published only while champ select is open, then retired.",
+    loading:"Loading the draft…",patch:"patch {n}",
+    scoutTagline:"The whole lobby, scouted — rank, recent form, and how each account actually plays, read from public match history. Shared from {link}.",
+    watch:"⚠ watch {champ}{detail}",scouting:"Scouting the lobby…",noEnemyLocks:"no enemy locks yet",
+    demo:"DEMO — a simulated champ select. In a real lobby this page streams the live draft (art loads from Riot's CDN).",
+    enemyLocks:"Enemy locks",enemyHint:"Riot hides enemy roles &amp; names in champ select — locked picks only."
+  }
+};
+const pageLang = () => ((state.pay && state.pay.lang) || H.lang) === "en" ? "en" : "pt_BR";
+const tr = key => UI[pageLang()][key] || key;
+const trf = (key, values={}) => Object.entries(values).reduce(
+  (s, [name, value]) => s.replaceAll(`{${name}}`, value), tr(key));
+const bi = (pt, en) => pageLang() === "en" ? en : pt;
 
 /* state.meta hydrates from ddragon (or from the demo script); everything renders through it
    so a blocked CDN degrades to names + monograms instead of broken images. */
-const state = {pay:null, meta:{champ:{}, rune:{}, spellImg:{}, ver:""}, metaReady:false,
+const state = {pay:null, meta:{champ:{}, rune:{}, spellImg:{}, spellName:{}, ver:"", locale:""}, metaReady:false,
                claimed:null, live:"connecting", noArt:H.demo, liveSts:0, liveRef:0};
 const claimKey = "smiteless-claim-" + (H.d || "demo");
 try { const c = localStorage.getItem(claimKey); if (c !== null) state.claimed = +c; } catch (e) {}
@@ -374,9 +429,9 @@ async function loadMeta(patch){
     if (!/^\d+\.\d+/.test(ver)) ver = (await j(DD + "/api/versions.json"))[0];
     state.meta.ver = ver;
     const [champs, runes, spells] = await Promise.all([
-      j(`${DD}/cdn/${ver}/data/en_US/champion.json`),
-      j(`${DD}/cdn/${ver}/data/en_US/runesReforged.json`),
-      j(`${DD}/cdn/${ver}/data/en_US/summoner.json`)]);
+      j(`${DD}/cdn/${ver}/data/${pageLang() === "en" ? "en_US" : "pt_BR"}/champion.json`),
+      j(`${DD}/cdn/${ver}/data/${pageLang() === "en" ? "en_US" : "pt_BR"}/runesReforged.json`),
+      j(`${DD}/cdn/${ver}/data/${pageLang() === "en" ? "en_US" : "pt_BR"}/summoner.json`)]);
     for (const c of Object.values(champs.data))
       state.meta.champ[+c.key] = {name:c.name, img:`${DD}/cdn/${ver}/img/champion/${c.image.full}`,
         art:`${DD}/cdn/img/champion/loading/${c.id}_0.jpg`};   // portrait for the polished card wash
@@ -385,8 +440,10 @@ async function loadMeta(patch){
       for (const slot of tree.slots) for (const r of slot.runes)
         state.meta.rune[r.id] = {name:r.name, icon:`${DD}/cdn/img/${r.icon}`};
     }
-    for (const s of Object.values(spells.data))
+    for (const s of Object.values(spells.data)) {
       state.meta.spellImg[+s.key] = `${DD}/cdn/${ver}/img/spell/${s.image.full}`;
+      state.meta.spellName[+s.key] = s.name;
+    }
     state.metaReady = true;
     render();
   } catch (e) { state.noArt = true; render(); }   // CDN unreachable -> monogram mode
@@ -414,7 +471,7 @@ function wrChip(wr){
   const cls = wr >= 51 ? "good" : wr <= 49 ? "bad" : "mid";
   return `<span class="wr ${cls}">${wr.toFixed(1)}%</span>`;
 }
-const tierChip = t => t ? `<span class="tier">${esc(t)} tier</span>` : "";
+const tierChip = t => t ? `<span class="tier">${esc(t)} ${tr("tier")}</span>` : "";
 function runeIcon(id){
   const m = state.meta.rune[id] || {};
   return (!state.noArt && m.icon) ? `<img src="${m.icon}" alt="" onerror="this.remove()">` : "";
@@ -425,10 +482,10 @@ function bansHtml(p){
   const b = p.bans || {};
   const row = ids => (ids && ids.length)
     ? ids.map(c => `<span class="ban" title="${esc(champName(c))}">${face(c, "s")}</span>`).join("")
-    : `<span class="ban-none">none yet</span>`;
+    : `<span class="ban-none">${tr("none")}</span>`;
   return `<div class="bans">
-    <div class="bangroup"><h3>Our bans</h3><div class="banrow">${row(b.a)}</div></div>
-    <div class="bangroup theirs"><h3>Their bans</h3><div class="banrow">${row(b.e)}</div></div>
+    <div class="bangroup"><h3>${tr("ourBans")}</h3><div class="banrow">${row(b.a)}</div></div>
+    <div class="bangroup theirs"><h3>${tr("theirBans")}</h3><div class="banrow">${row(b.e)}</div></div>
   </div>`;
 }
 
@@ -437,23 +494,26 @@ function buildBlock(card, label){
   let h = "";
   if (r.pr && r.pr.length){
     const [key, ...minors] = r.pr;
-    h += `<div class="runes"><span class="rt">${esc(TREES[r.pp] || runeName(r.pp) || "Runes")}</span>
-      <span class="rune key">${runeIcon(key)}${esc(runeName(key) || "keystone")}</span>` +
+    h += `<div class="runes"><span class="rt">${esc(runeName(r.pp) || tr("runes"))}</span>
+      <span class="rune key">${runeIcon(key)}${esc(runeName(key) || tr("keystone"))}</span>` +
       minors.map(x => `<span class="rune">${runeIcon(x)}${esc(runeName(x) || "")}</span>`).join("") +
       `</div>`;
     if (r.sr && r.sr.length)
-      h += `<div class="runes"><span class="rt">${esc(TREES[r.sp] || runeName(r.sp) || "+")}</span>` +
+      h += `<div class="runes"><span class="rt">${esc(runeName(r.sp) || "+")}</span>` +
         r.sr.map(x => `<span class="rune">${runeIcon(x)}${esc(runeName(x) || "")}</span>`).join("") +
-        ((r.st || []).map(x => `<span class="rune shard">${esc(SHARDS[x] || "")}</span>`).join("")) +
+        ((r.st || []).map(x => `<span class="rune shard">${esc(
+          pageLang() === "en" ? (SHARDS[x] || "") :
+          ({5001:"+PV",5002:"+Armadura",5003:"+RM",5005:"+VA",5007:"+AH",5008:"+FA",
+            5010:"+MS",5011:"+PV",5013:"+Tenacidade"}[x] || ""))}</span>`).join("")) +
         `</div>`;
   }
   const bits = [];
   for (const sid of (r.sm || []))
-    bits.push(`<span class="item summ">${esc(SPELLS[sid] || "spell")}</span>`);
+    bits.push(`<span class="item summ">${esc(state.meta.spellName[sid] || SPELLS[sid] || tr("spell"))}</span>`);
   for (const iid of (r.it || [])){
     const src = state.meta.ver && !state.noArt
       ? `<img src="${DD}/cdn/${state.meta.ver}/img/item/${iid}.png" alt="" onerror="this.remove()">` : "";
-    bits.push(`<span class="item">${src}${esc((window.DEMO_ITEMS || {})[iid] || (src ? "" : "item"))}</span>`);
+    bits.push(`<span class="item">${src}${esc((window.DEMO_ITEMS || {})[iid] || (src ? "" : tr("item")))}</span>`);
   }
   if (bits.length) h += `<div class="loadout">${bits.join("")}</div>`;
   return h;
@@ -466,7 +526,7 @@ function suggCard(card, ownLabel){
     <div class="cardhead">${face(card.c, "s")}
       <span class="pname">${esc(champName(card.c))}</span>
       ${wrChip(card.wr)} ${tierChip(card.t)}
-      ${ownLabel ? `<span class="rt ownlabel">your lock</span>` : ""} ${vs}
+      ${ownLabel ? `<span class="rt ownlabel">${tr("yourLock")}</span>` : ""} ${vs}
     </div>${buildBlock(card)}</div>`;
 }
 
@@ -477,13 +537,13 @@ function seatHtml(seat, i){
   const own = seat.own || null;
   const name = locked
     ? `<span class="pname">${esc(champName(seat.c))}</span>`
-    : `<span class="pname"><span class="picking">picking…</span></span>`;
+    : `<span class="pname"><span class="picking">${tr("picking")}</span></span>`;
   const head = `<div class="seatrow">
       <span class="rolechip">${esc(role)}</span>
       ${locked ? face(seat.c, "") : `<span class="face" style="color:var(--faint)">·</span>`}
       ${name} ${locked && own ? wrChip(own.wr) + tierChip(own.t) : ""}
       <button class="claim ${mine ? "on" : ""}" data-claim="${i}">
-        ${mine ? "✓ me — unclaim" : "This is me"}</button>
+        ${mine ? tr("unclaim") : tr("thisIsMe")}</button>
     </div>`;
   let body = "";
   const sugg = seat.sugg || [];
@@ -493,9 +553,9 @@ function seatHtml(seat, i){
     for (const cd of sugg) if (!own || cd.c !== own.c) cards.push(suggCard(cd));
     body = cards.length
       ? `<div class="cards">${cards.join("")}</div>`
-      : `<div class="suggline"><span class="sugglabel">crunching suggestions…</span></div>`;
+      : `<div class="suggline"><span class="sugglabel">${tr("crunching")}</span></div>`;
   } else if (sugg.length){
-    body = `<div class="suggline"><span class="sugglabel">good here:</span>` +
+    body = `<div class="suggline"><span class="sugglabel">${tr("goodHere")}</span>` +
       sugg.map(cd => `<span class="schip">${face(cd.c, "xs")}
         <span class="nm">${esc(champName(cd.c))}</span>${wrChip(cd.wr)}</span>`).join("") +
       `</div>`;
@@ -511,7 +571,7 @@ const TIER_AB = {IRON:"I", BRONZE:"B", SILVER:"S", GOLD:"G", PLATINUM:"P", EMERA
   DIAMOND:"D", MASTER:"M", GRANDMASTER:"GM", CHALLENGER:"C"};
 const DIVNUM = {I:"1", II:"2", III:"3", IV:"4"};
 function rankBadge(rk){
-  if (!rk || !rk.t) return `<span class="rank unranked">Unranked</span>`;
+  if (!rk || !rk.t) return `<span class="rank unranked">${tr("unranked")}</span>`;
   const t = rk.t.toUpperCase(), ab = TIER_AB[t] || t[0];
   const hi = t === "MASTER" || t === "GRANDMASTER" || t === "CHALLENGER";
   const txt = hi ? `${ab} ${rk.lp||0}LP` : `${ab}${DIVNUM[rk.d]||""} ${rk.lp||0}LP`;
@@ -522,7 +582,7 @@ function gradeChip(p){
   const L = p>=92?"S":p>=82?"A":p>=70?"B":p>=58?"C":p>=45?"D":"F";
   const col = p>=82?"var(--arc)":p>=70?"var(--good)":p>=58?"var(--warn)":
               p>=38?"var(--bad)":"#de2834";
-  return `<span class="grade" style="color:${col}" title="performance grade (how they play, not W/L)">${L}</span>
+  return `<span class="grade" style="color:${col}" title="${esc(tr("gradeTitle"))}">${L}</span>
           <span class="gp">${Math.round(p)}</span>`;
 }
 function formBars(f){
@@ -550,9 +610,9 @@ function pcard(r, side, ally, mine){
     const good = r.cw * 2 >= r.cg;
     recLine += ` · <span class="cw ${good ? "good" : "bad"}">${r.cw}-${r.cg - r.cw} ${esc(champ)}</span>`;
   }
-  const mast = r.pts >= 20000 ? `<span class="mast">${Math.round(r.pts/1000)}k pts</span>` : "";
+  const mast = r.pts >= 20000 ? `<span class="mast">${trf("points", {n:Math.round(r.pts/1000)})}</span>` : "";
   const claim = ally
-    ? `<button class="claim2 ${mine ? "on" : ""}" data-claim="${r._i}">${mine ? "✓ me" : "This is me"}</button>`
+    ? `<button class="claim2 ${mine ? "on" : ""}" data-claim="${r._i}">${mine ? tr("me") : tr("thisIsMe")}</button>`
     : "";
   return `<div class="pcard ${side} ${r.me ? "me" : ""} ${mine ? "claimed" : ""} ${
       ally && !mine ? "claimable" : ""}"${art}${ally ? ` data-rowclaim="${r._i}"` : ""}>
@@ -573,13 +633,13 @@ function laneMid(role, gankLane){
   const gank = gankLane && gankLane.toLowerCase() === (role || "").toLowerCase();
   return `<div class="lane-mid ${gank ? "gank" : ""}">
     <span class="lm-role">${esc(rl)}</span>
-    ${gank ? `<span class="lm-gank">GANK</span>` : `<span class="lm-vs">vs</span>`}
+    ${gank ? `<span class="lm-gank">${tr("gank")}</span>` : `<span class="lm-vs">${tr("vs")}</span>`}
   </div>`;
 }
 function coachPanel(r, sc){
-  const you = r.c ? champName(r.c) : "you";
+  const you = r.c ? champName(r.c) : tr("you");
   const enemy = r.lane ? champName(r.lane) : "";
-  const head = `<div class="coach-h">Your lane —
+  const head = `<div class="coach-h">${tr("yourLane")} —
     <span class="lo">${esc(you)}</span>${enemy ? ` vs ${face(r.lane, "vsface")}
       <span class="en">${esc(enemy)}</span>` : ""}</div>`;
   let body;
@@ -591,14 +651,14 @@ function coachPanel(r, sc){
       : `<div class="coach-tip">${esc(r.tip)}</div>`;
   } else {
     body = `<div class="coach-none">${enemy
-      ? "No written matchup tip for this lane yet — play the fundamentals: track their cooldowns, respect their power spikes, and trade when they're down."
-      : "Lane opponent not identified yet."}</div>`;
+      ? tr("noTip")
+      : tr("noOpponent")}</div>`;
   }
   const wc = sc.wincons || {};
   const wl = (wc.win || wc.lose)
     ? `<div class="coach-wl">${
-        wc.win ? `<div class="wl win"><span class="k">WIN</span>${esc(wc.win)}</div>` : ""}${
-        wc.lose ? `<div class="wl lose"><span class="k">LOSE</span>${esc(wc.lose)}</div>` : ""}</div>`
+        wc.win ? `<div class="wl win"><span class="k">${tr("win")}</span>${esc(wc.win)}</div>` : ""}${
+        wc.lose ? `<div class="wl lose"><span class="k">${tr("lose")}</span>${esc(wc.lose)}</div>` : ""}</div>`
     : "";
   return `<div class="coach">${head}${body}${wl}</div>`;
 }
@@ -626,22 +686,22 @@ function scoutHtml(sc){
       <div class="lane">
         ${pcard(a, "ally", true, mine)}
         ${laneMid(a.role, gankLane)}
-        ${e ? pcard(e, "enemy", false, false) : `<div class="pcard enemy empty">no lane opponent</div>`}
+        ${e ? pcard(e, "enemy", false, false) : `<div class="pcard enemy empty">${tr("noLane")}</div>`}
       </div>
       ${mine ? coachPanel(a, sc) : ""}
     </div>`;
   }).join("");
   let h = `<div class="laneboard">
-    <div class="lb-head"><span class="lb-you">YOUR TEAM</span>
-      <span class="lb-tap"><b>tap your card</b> for your lane</span>
-      <span class="lb-them">ENEMY</span></div>
+    <div class="lb-head"><span class="lb-you">${tr("yourTeam")}</span>
+      <span class="lb-tap"><b>${tr("tapCard")}</b> ${tr("forLane")}</span>
+      <span class="lb-them">${tr("enemy")}</span></div>
     ${lanes}</div>`;
   const wc = sc.wincons || {};
   if ((sc.plan && sc.plan.length) || wc.win) {
-    h += `<div class="plan"><h3>Game plan</h3>` +
+    h += `<div class="plan"><h3>${tr("gamePlan")}</h3>` +
       (sc.plan || []).map(l => `<div class="ln">→ ${esc(l)}</div>`).join("") +
-      (wc.win ? `<div class="wl win"><span class="k">WIN</span>${esc(wc.win)}</div>` : "") +
-      (wc.lose ? `<div class="wl lose"><span class="k">LOSE</span>${esc(wc.lose)}</div>` : "") +
+      (wc.win ? `<div class="wl win"><span class="k">${tr("win")}</span>${esc(wc.win)}</div>` : "") +
+      (wc.lose ? `<div class="wl lose"><span class="k">${tr("lose")}</span>${esc(wc.lose)}</div>` : "") +
       `</div>`;
   }
   return h;
@@ -654,25 +714,25 @@ function liveHtml(lv){
   const parts = [];
   const g = lv.gank;
   if (g && g.lane)
-    parts.push(`<div class="lv-call"><span class="lv-k">GANK</span>
-      <b>${esc(String(g.lane).toUpperCase())}</b> — ${esc(g.champ || "")} is lvl ${g.lvl}` +
-      (g.vs_lvl ? ` <span class="lv-sub">(your lane ${g.vs_lvl})</span>` : "") + `</div>`);
+    parts.push(`<div class="lv-call"><span class="lv-k">${tr("gank")}</span>
+      <b>${esc(String(g.lane).toUpperCase())}</b> — ${esc(g.champ || "")} ${trf("isLevel", {n:g.lvl})}` +
+      (g.vs_lvl ? ` <span class="lv-sub">${trf("yourLaneLevel", {n:g.vs_lvl})}</span>` : "") + `</div>`);
   else
-    parts.push(`<div class="lv-call none"><span class="lv-k">GANK</span> no clean window — farm tempo, set up the next objective</div>`);
+    parts.push(`<div class="lv-call none"><span class="lv-k">${tr("gank")}</span> ${tr("noWindow")}</div>`);
   const wp = lv.winprob;
   if (wp && wp.pct != null)
-    parts.push(`<div class="lv-item lv-wp ${wp.ahead ? "good" : "bad"}"><span class="lv-lbl">Win</span>
+    parts.push(`<div class="lv-item lv-wp ${wp.ahead ? "good" : "bad"}"><span class="lv-lbl">${tr("winLabel")}</span>
       <b>${wp.pct}%</b>` + (wp.basis ? ` <span class="lv-sub">${esc(wp.basis)}</span>` : "") + `</div>`);
   const jg = lv.jungle;
   if (jg && jg.champ)
-    parts.push(`<div class="lv-item"><span class="lv-lbl">Enemy JG</span>
+    parts.push(`<div class="lv-item"><span class="lv-lbl">${tr("enemyJg")}</span>
       <span>${esc(jg.champ)}</span>` + (jg.what ? ` <span class="lv-sub">${esc(jg.what)}</span>` : "") + `</div>`);
   const objs = (lv.objectives || []).slice(0, 4).map(o => {
     const rem = o.secs;
     return `<div class="lv-obj ${o.urgent ? "urgent" : ""} ${o.up ? "up" : ""}">
       <span class="lv-lbl">${esc(o.label || "")}</span>
       <b class="lv-timer"${(!o.up && rem != null) ? ` data-secs="${rem}"` : ""}>${
-        o.up ? "UP" : (rem != null ? fmtSecs(rem) : "—")}</b></div>`;
+        o.up ? tr("up") : (rem != null ? fmtSecs(rem) : "—")}</b></div>`;
   }).join("");
   return `<div class="live-strip">${parts.join("")}` + (objs ? `<div class="lv-objs">${objs}</div>` : "") + `</div>`;
 }
@@ -681,7 +741,7 @@ function tickTimers(){
   const elapsed = Date.now()/1000 - state.liveRef;
   for (const el of document.querySelectorAll(".lv-timer[data-secs]")){
     const rem = (+el.dataset.secs) - elapsed;
-    if (rem <= 0){ el.textContent = "UP"; el.classList.add("upnow"); }
+    if (rem <= 0){ el.textContent = tr("up"); el.classList.add("upnow"); }
     else el.textContent = fmtSecs(rem);
   }
 }
@@ -691,58 +751,62 @@ function render(){
   const app = document.getElementById("app");
   const st = document.getElementById("status"), stt = document.getElementById("statustxt");
   st.className = "chip " + ({live:"live", over:"over", err:"err"}[state.live] || "");
-  stt.textContent = {connecting:"connecting", live:"live", over:"draft ended",
-                     err:"draft not found"}[state.live] || state.live;
+  document.documentElement.lang = pageLang() === "en" ? "en" : "pt-BR";
+  document.title = tr("title");
+  document.querySelector('meta[name="description"]').content = tr("description");
+  const rootLink = '<a href="https://github.com/bobbyroylee/smiteless" rel="noopener">Smiteless</a>';
+  const footer = document.querySelector("footer");
+  if (footer) footer.innerHTML = `<span>${tr("footer")}</span><span>·</span>` +
+    `<a href="https://github.com/bobbyroylee/smiteless" rel="noopener">${tr("get")}</a>`;
+  stt.textContent = tr(state.live) || state.live;
   const p = state.pay;
   if (!p){
     app.innerHTML = state.live === "err"
-      ? `<div class="notice"><b>Draft not found.</b><br>The lobby may be over — drafts are
-         published only while champ select is open, then retired.</div>`
-      : `<div class="notice">Loading the draft…</div>`;
+      ? `<div class="notice"><b>${tr("notFound")}</b><br>${tr("retired")}</div>`
+      : `<div class="notice">${tr("loading")}</div>`;
     return;
   }
   const patch = document.getElementById("patch");
   if (p.patch){ patch.hidden = false;
-    document.getElementById("patchtxt").textContent = "patch " + p.patch.split(".").slice(0,2).join("."); }
+    document.getElementById("patchtxt").textContent =
+      trf("patch", {n:p.patch.split(".").slice(0,2).join(".")}); }
   const sub = document.getElementById("headsub"), tag = document.getElementById("tagline");
   const threat = document.getElementById("threat");
   // once the game loads, the champ-select draft becomes the full SCOUT scoreboard + TACTICAL board
   const hasScout = p.scout && (((p.scout.allies||[]).length) || ((p.scout.enemies||[]).length));
   if (hasScout || p.live){
     document.body.classList.add("scout");
-    if (sub) sub.textContent = "live scout";
-    if (tag) tag.innerHTML = "The whole lobby, scouted — rank, recent form, and how each "
-      + "account actually plays, read from public match history. Shared from "
-      + '<a href="https://github.com/bobbyroylee/smiteless" rel="noopener">Smiteless</a>.';
+    if (sub) sub.textContent = tr("scout");
+    if (tag) tag.innerHTML = trf("scoutTagline", {link:rootLink});
     const th = hasScout ? p.scout.threat : null;
     if (threat){
       if (th && th.c){
         document.getElementById("threattxt").textContent =
-          "⚠ watch " + champName(th.c) + (th.txt ? " — " + th.txt : "");
+          trf("watch", {champ:champName(th.c), detail:(th.txt ? " — " + th.txt : "")});
         threat.hidden = false;
       } else threat.hidden = true;
     }
     // sync the timer countdown reference to when THIS live snapshot arrived (avoids clock skew)
     if (p.sts && p.sts !== state.liveSts){ state.liveSts = p.sts; state.liveRef = Date.now()/1000; }
     app.innerHTML = liveHtml(p.live)
-      + (hasScout ? scoutHtml(p.scout) : `<div class="notice">Scouting the lobby…</div>`);
+      + (hasScout ? scoutHtml(p.scout) : `<div class="notice">${tr("scouting")}</div>`);
     if (hasScout) wireClaims(app);
     tickTimers();
     return;
   }
   document.body.classList.remove("scout");
   if (threat) threat.hidden = true;
-  if (sub) sub.textContent = "live champ select";
+  if (sub) sub.textContent = tr("select");
+  if (tag) tag.innerHTML = trf("tagline", {link:rootLink});
   const seats = (p.seats || []).map(seatHtml).join("");
   const foes = (p.enemy || []).length
     ? p.enemy.map(c => `<div class="foe">${face(c, "s")}<span class="pname">${esc(champName(c))}</span></div>`).join("")
-    : `<div class="foe-none">no enemy locks yet</div>`;
-  app.innerHTML = (H.demo ? `<div class="demo-banner">DEMO — a simulated champ select. In a real
-      lobby this page streams the live draft (art loads from Riot's CDN).</div>` : "")
+    : `<div class="foe-none">${tr("noEnemyLocks")}</div>`;
+  app.innerHTML = (H.demo ? `<div class="demo-banner">${tr("demo")}</div>` : "")
     + bansHtml(p)
     + `<div class="cols"><div>${seats}</div>
-       <div class="rail"><h3>Enemy locks</h3>
-         <p class="hint">Riot hides enemy roles &amp; names in champ select — locked picks only.</p>
+       <div class="rail"><h3>${tr("enemyLocks")}</h3>
+         <p class="hint">${tr("enemyHint")}</p>
          ${foes}</div></div>`;
   wireClaims(app);
 }
@@ -800,17 +864,34 @@ function demoMeta(){
     21:"Miss Fortune",516:"Ornn",150:"Gnar",897:"K'Sante",56:"Nocturne",59:"Jarvan IV",
     113:"Sejuani",61:"Orianna",3:"Galio",1:"Annie",111:"Nautilus",497:"Rakan",201:"Braum"};
   for (const [k, v] of Object.entries(names)) state.meta.champ[+k] = {name:v};
-  const runes = {8112:"Electrocute",8126:"Cheap Shot",8138:"Eyeball Collection",8135:"Relentless Hunter",
-    8229:"Arcane Comet",8226:"Manaflow Band",8210:"Transcendence",8237:"Scorch",
-    8437:"Grasp of the Undying",8446:"Demolish",8444:"Second Wind",8451:"Overgrowth",
-    8008:"Lethal Tempo",9101:"Absorb Life",9103:"Legend: Bloodline",8014:"Coup de Grace",
-    8351:"Glacial Augment",8306:"Hextech Flashtraption",8345:"Biscuit Delivery",8347:"Cosmic Insight",
-    8465:"Guardian",8463:"Font of Life",8453:"Revitalize",8242:"Unflinching",8010:"Conqueror",
-    9111:"Triumph",9104:"Legend: Alacrity"};
+  const runes = {
+    8112:bi("Eletrocutar","Electrocute"),8126:bi("Golpe Desleal","Cheap Shot"),
+    8138:bi("Globos Oculares","Eyeball Collection"),8135:bi("Caça Incansável","Relentless Hunter"),
+    8229:bi("Cometa Arcano","Arcane Comet"),8226:bi("Faixa de Fluxo de Mana","Manaflow Band"),
+    8210:bi("Transcendência","Transcendence"),8237:bi("Chamuscar","Scorch"),
+    8437:bi("Aperto dos Mortos-Vivos","Grasp of the Undying"),8446:bi("Demolir","Demolish"),
+    8444:bi("Ventos Revigorantes","Second Wind"),8451:bi("Crescimento Excessivo","Overgrowth"),
+    8008:bi("Ritmo Fatal","Lethal Tempo"),9101:bi("Absorção Vital","Absorb Life"),
+    9103:bi("Lenda: Linhagem","Legend: Bloodline"),8014:bi("Golpe de Misericórdia","Coup de Grace"),
+    8351:bi("Aprimoramento Glacial","Glacial Augment"),8306:bi("Flashtração Hextec","Hextech Flashtraption"),
+    8345:bi("Entrega de Biscoitos","Biscuit Delivery"),8347:bi("Perspicácia Cósmica","Cosmic Insight"),
+    8465:bi("Guardião","Guardian"),8463:bi("Fonte da Vida","Font of Life"),
+    8453:bi("Revitalizar","Revitalize"),8242:bi("Inabalável","Unflinching"),
+    8010:bi("Conquistador","Conqueror"),9111:bi("Triunfo","Triumph"),
+    9104:bi("Lenda: Espontaneidade","Legend: Alacrity")};
   for (const [k, v] of Object.entries(runes)) state.meta.rune[+k] = {name:v};
-  window.DEMO_ITEMS = {3068:"Sunfire",3075:"Thornmail",3110:"Frozen Heart",6672:"Kraken",
-    3031:"IE",3094:"RFC",3157:"Zhonya's",6653:"Liandry's",4645:"Shadowflame",
-    3190:"Locket",3107:"Redemption",3222:"Mikael's",6692:"Eclipse",6698:"Profane",3142:"Hubris"};
+  window.DEMO_ITEMS = {
+    3068:bi("Égide de Fogo Solar","Sunfire"),3075:bi("Armadura de Espinhos","Thornmail"),
+    3110:bi("Coração Congelado","Frozen Heart"),6672:bi("Mata-Cráquens","Kraken"),
+    3031:bi("Gume do Infinito","IE"),3094:bi("Canhão Fumegante","RFC"),
+    3157:bi("Ampulheta de Zhonya","Zhonya's"),6653:bi("Tormenta de Liandry","Liandry's"),
+    4645:bi("Chama Sombria","Shadowflame"),3190:bi("Medalhão","Locket"),
+    3107:bi("Redenção","Redemption"),3222:bi("Bênção de Mikael","Mikael's"),
+    6692:bi("Eclipse","Eclipse"),6698:bi("Hidra Profana","Profane"),3142:bi("Hubris","Hubris")};
+  const spellPt = {1:"Purificar",3:"Exaustão",4:"Flash",6:"Fantasma",7:"Curar",11:"Golpear",
+    12:"Teleporte",13:"Clareza",14:"Incendiar",21:"Barreira",32:"Marca"};
+  for (const [k, v] of Object.entries(SPELLS))
+    state.meta.spellName[+k] = pageLang() === "en" ? v : (spellPt[k] || v);
 }
 function demoPayloads(){
   const R = (pp, pr, sp, sr, st, sm, it) => ({pp, pr, sp, sr, st, sm, it});
@@ -839,7 +920,7 @@ function demoPayloads(){
   const sugSup = [{c:111, wr:51.7, t:"A"}, {c:497, wr:51.9, t:"A"}, {c:201, wr:50.6, t:"B"}];
   const seat = (role, c, own, sugg) => {
     const s = {role, c}; if (own) s.own = own; if (sugg) s.sugg = sugg; return s; };
-  const base = p => Object.assign({v:1, ts:0, patch:"15.14.1"}, p);
+  const base = p => Object.assign({v:1, ts:0, patch:"15.14.1", lang:pageLang()}, p);
   return [
     base({bans:{a:[238], e:[141]}, enemy:[],
       seats:[seat("top",0,null,null), seat("jungle",0), seat("mid",0), seat("adc",0), seat("support",0)]}),
@@ -859,54 +940,69 @@ function demoPayloads(){
 function demoLive(){
   return {
     gank:{lane:"top", champ:"Darius", lvl:5, vs_lvl:7},
-    winprob:{pct:56, ahead:true, basis:"+2 kills, +1 drake"},
-    jungle:{champ:"Graves", side:"botside", what:"just did drake", ago:35},
+    winprob:{pct:56, ahead:true, basis:bi("+2 abates, +1 dragão","+2 kills, +1 drake")},
+    jungle:{champ:"Graves", side:bi("lado inferior","botside"),
+      what:bi("acabou de fazer o dragão","just did drake"), ago:35},
     objectives:[
-      {label:"Void Grubs", secs:42, up:false, urgent:true},
-      {label:"Drake", secs:168, up:false, urgent:false},
-      {label:"Baron", secs:0, up:true, urgent:false}]};
+      {label:bi("Larvas do Vazio","Void Grubs"), secs:42, up:false, urgent:true},
+      {label:bi("Dragão","Drake"), secs:168, up:false, urgent:false},
+      {label:bi("Barão","Baron"), secs:0, up:true, urgent:false}]};
 }
 function demoScout(){
   const sr = (c, role, n, t, d, lp, f, w, g, cg, cw, kda, p, pts, tg, me) =>
     ({c, role, n, me:!!me, rk:{t, d, lp}, f, w, g, cg, cw, kda, p, pts, t:tg});
-  const you = sr(254,"JG","You","GOLD","II",66,[1,1,0,1,1],7,10,6,4,3.1,82,140000,
-         [["Vi main · 140k pts","good"],["7W in last 10","good"]],1);
+  const you = sr(254,"JG",bi("Você","You"),"GOLD","II",66,[1,1,0,1,1],7,10,6,4,3.1,82,140000,
+         [[bi("main Vi · 140 mil pts","Vi main · 140k pts"),"good"],
+          [bi("7V nas últimas 10","7W in last 10"),"good"]],1);
   you.lane = 64;                                    // paired vs the enemy jungler (Lee Sin)
-  you.tip = "Lee Sin wants an aggressive early game — track his first clear and expect a "
-    + "level-2/3 gank. Ward your raptors/scuttle, path away from his lead side, and punish the "
-    + "windows after he burns Q-Q.  — guide authors (MOBAFire)";
+  you.tip = bi(
+    "Lee Sin quer um início agressivo — acompanhe a primeira limpeza e espere um gank nível 2/3. "
+      + "Coloque visão nos Acuâminas/Aronguejo, jogue longe do lado forte dele e puna depois que gastar Q-Q.  — autores de guias (MOBAFire)",
+    "Lee Sin wants an aggressive early game — track his first clear and expect a level-2/3 gank. "
+      + "Ward your raptors/scuttle, path away from his lead side, and punish the windows after he burns Q-Q.  — guide authors (MOBAFire)");
   const out = {
-    me:0, threat:{c:122, txt:"smurf? · 5W heater"},
+    me:0, threat:{c:122, txt:bi("smurf? · sequência de 5V","smurf? · 5W heater")},
     allies:[
       you,
       sr(54,"TOP","RockSolid","SILVER","I",88,[1,0,0,1,0],4,10,8,4,2.0,61,42000,
-         [["comfort · 4-4 on Malphite","neutral"]]),
+         [[bi("conforto · 4-4 de Malphite","comfort · 4-4 on Malphite"),"neutral"]]),
       sr(103,"MID","faker fan99","PLATINUM","IV",12,[1,1,1,1,0],8,10,2,1,4.2,88,9000,
-         [["off-champ · 7 of last 10 on Yasuo","bad"],["4W heater · on Yasuo","neutral"]]),
+         [[bi("fora do campeão · 7 das últimas 10 de Yasuo","off-champ · 7 of last 10 on Yasuo"),"bad"],
+          [bi("sequência de 4V · de Yasuo","4W heater · on Yasuo"),"neutral"]]),
       sr(222,"BOT","adcdiff","GOLD","III",40,[0,0,1,0,0],2,10,6,2,1.6,44,88000,
-         [["cold on Jinx · 2-6 recent","bad"],["bleeds · 6.8 deaths/game","bad"]]),
+         [[bi("frio de Jinx · 2-6 recente","cold on Jinx · 2-6 recent"),"bad"],
+          [bi("cede muito · 6,8 mortes/partida","bleeds · 6.8 deaths/game"),"bad"]]),
       sr(412,"SUP","wardbot","GOLD","II",55,[1,1,0,1,1],6,10,9,6,2.9,74,210000,
-         [["Thresh OTP · 210k pts","good"]])],
+         [[bi("mono Thresh · 210 mil pts","Thresh OTP · 210k pts"),"good"]])],
     enemies:[
       sr(122,"TOP","smurfander","GOLD","IV",38,[1,1,1,1,1],9,10,3,3,5.1,88,18000,
-         [["smurf? · lvl 41 · 9-1","bad"],["5W heater","bad"]]),
+         [[bi("smurf? · nível 41 · 9-1","smurf? · lvl 41 · 9-1"),"bad"],
+          [bi("sequência de 5V","5W heater"),"bad"]]),
       sr(64,"JG","jgandiff","GOLD","IV",30,[1,0,1,0,1],5,10,0,0,2.0,55,60000,
-         [["off-champ · 8 of last 10 on Viego","bad"]]),
+         [[bi("fora do campeão · 8 das últimas 10 de Viego","off-champ · 8 of last 10 on Viego"),"bad"]]),
       sr(157,"MID","midbeast","GOLD","III",44,[0,1,0,1,1],6,10,7,5,3.4,79,120000,
-         [["Yasuo main · 120k pts","bad"]]),
+         [[bi("main Yasuo · 120 mil pts","Yasuo main · 120k pts"),"bad"]]),
       sr(145,"BOT","botlaner","SILVER","II",61,[0,0,0,1,0],3,10,4,1,1.5,45,30000,
-         [["cold on Kai'Sa · 1-3 recent","good"],["4L skid · tilt risk","good"]]),
+         [[bi("frio de Kai'Sa · 1-3 recente","cold on Kai'Sa · 1-3 recent"),"good"],
+          [bi("sequência de 4D · risco de tilt","4L skid · tilt risk"),"good"]]),
       sr(111,"SUP","supdiff","GOLD","IV",20,[1,0,0,0,0],2,10,2,1,2.1,52,15000,
-         [["off-role · MID main","good"]])],
-    plan:["Enemy is AD-heavy — rush armor, Randuin's on tanks.",
-          "They out-scale — force early tempo and objectives, end before 3 items."],
-    wincons:{win:"end before 25 — turn every kill into towers and objectives",
-             lose:"letting it go late — their comp outgrows yours"}};
+         [[bi("fora da função · main MEIO","off-role · MID main"),"good"]])],
+    plan:[
+      bi("Inimigo tem muito AD — priorize armadura e Randuin nos tanques.",
+         "Enemy is AD-heavy — rush armor, Randuin's on tanks."),
+      bi("Eles escalam melhor — force ritmo e objetivos cedo; termine antes de 3 itens.",
+         "They out-scale — force early tempo and objectives, end before 3 items.")],
+    wincons:{
+      win:bi("termine antes dos 25 — transforme cada abate em torres e objetivos",
+             "end before 25 — turn every kill into towers and objectives"),
+      lose:bi("deixar chegar ao late game — a composição deles supera a sua",
+              "letting it go late — their comp outgrows yours")}};
   // pair every ally to the same-role enemy so any teammate's "This is me" shows their lane
   const lanes = [64, 122, 157, 145, 111];
   out.allies.forEach((a, i) => { a.lane = lanes[i]; });
-  out.allies[1].tip = "Malphite outscales — play the early game safe, don't get poked out, and "
-    + "back off once he hits 6. Group for his ult, but respect his all-in when Q is up.";
+  out.allies[1].tip = bi(
+    "Malphite escala melhor — jogue o início com segurança, não seja expulso por poke e recue quando ele chegar ao 6. Agrupe contra a ultimate, mas respeite o all-in com o Q disponível.",
+    "Malphite outscales — play the early game safe, don't get poked out, and back off once he hits 6. Group for his ult, but respect his all-in when Q is up.");
   return out;
 }
 function runDemo(){

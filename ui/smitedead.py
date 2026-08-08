@@ -30,6 +30,7 @@ import loldead as ld
 import phasecheck
 import smiteconfig as cfg
 import smiteskin as skin
+from smitei18n import coach, t, tf
 from smiteoverlay import target_monitor, make_no_activate, toplevel_hwnd, monitors, monitor_of, client_rect
 
 _user32 = ctypes.windll.user32
@@ -244,9 +245,9 @@ def render_frame(dd, b, W, H):
             return lines
 
         subf = _wfont(S(13))
-        sublines = _cap(_wrap(d, sub or "", subf, colw - S(44)), 2) if sub else []
+        sublines = _cap(_wrap(d, coach(sub or ""), subf, colw - S(44)), 2) if sub else []
         lf = _wfont(S(17 if big else 16), True)
-        headlines = _cap(_wrap(d, line or "", lf, colw - S(44)), 2) if line else []
+        headlines = _cap(_wrap(d, coach(line or ""), lf, colw - S(44)), 2) if line else []
         h = S(34) + S(23) * len(headlines) + S(20) * len(sublines)
         if ymax is not None and y + h > ymax:
             return y
@@ -269,26 +270,26 @@ def render_frame(dd, b, W, H):
     ch = S(100)
     _card(d, lx, ly, colw, ch, _TONE_C.get(b.get("tone"), C_EMBER))
     px = lx + S(22)
-    d.text((px, ly + S(11)), "RESPAWN", font=_wfont(S(13), True), fill=C_MUTED)
+    d.text((px, ly + S(11)), t("RESPAWN"), font=_wfont(S(13), True), fill=C_MUTED)
     secs = max(0, int(round(b.get("secs") or 0)))
     clock = f"{secs}"
     d.text((px - S(3), ly + S(26)), clock, font=_dfont(S(58)), fill=C_TXT)
     cw = d.textlength(clock, font=_dfont(S(58)))
-    d.text((px + cw + S(8), ly + S(56)), "sec", font=_wfont(S(15)), fill=C_MUTED)
+    d.text((px + cw + S(8), ly + S(56)), t("sec"), font=_wfont(S(15)), fill=C_MUTED)
     d.text((px + cw + S(8), ly + S(30)),
-           f"back {_mmss((b.get('gametime') or 0) + secs)}", font=_wfont(S(13)), fill=C_FAINT)
+           tf("back {time}", time=_mmss((b.get('gametime') or 0) + secs)), font=_wfont(S(13)), fill=C_FAINT)
     ly += ch + S(12)
 
     why = b.get("why")
     if why:
-        ly = _block(lx, ly, "WHY YOU DIED", C_BAD, why.get("line"), why.get("sub"), C_BAD,
+        ly = _block(lx, ly, t("WHY YOU DIED"), C_BAD, why.get("line"), why.get("sub"), C_BAD,
                     ymax=LY1)
 
     # PRE-EMPTIVE chain read (§13): fires while you're still dead, from conditions that
     # precede a repeat death — so the warning lands BEFORE you walk back in
     chain = b.get("chain")
     if chain:
-        ly = _block(lx, ly, "BEFORE YOU WALK BACK", C_WARN, chain.get("line"),
+        ly = _block(lx, ly, t("BEFORE YOU WALK BACK"), C_WARN, chain.get("line"),
                     chain.get("sub"), C_WARN, ymax=LY1)
 
     buy, verdict = b.get("buy"), b.get("verdict")
@@ -298,7 +299,7 @@ def render_frame(dd, b, W, H):
         h = S(34) + S(24) * (len(lines) + len(vlines))
         if ly + h <= LY1:
             _card(d, lx, ly, colw, h, C_INFO)
-            _hdr(lx, ly, "ON RESPAWN", C_MUTED)
+            _hdr(lx, ly, t("ON RESPAWN"), C_MUTED)
             yy = ly + S(32)
             for ln in lines:
                 d.text((lx + S(22), yy), ln, font=_wfont(S(15), True), fill=C_TXT)
@@ -314,13 +315,13 @@ def render_frame(dd, b, W, H):
         # THE OUT (core/lolout) owns this block in a game you're losing: the grey screen is
         # where a player decides whether to keep playing one, so the block carries its
         # instruction underneath rather than a generic strategic sentence.
-        ry = _block(rx, ry, b.get("wincon_title") or "HOW YOU WIN", C_EMBER, b["wincon"],
+        ry = _block(rx, ry, t(b.get("wincon_title") or "HOW YOU WIN"), C_EMBER, b["wincon"],
                     b.get("wincon_sub"), C_EMBER, big=True, ymax=RY1)
     # your recurring PATTERN from the behavior ledger — surfaced at the exact moment you
     # may have just repeated it
     pat = b.get("pattern")
     if pat:
-        _block(rx, ry, "WORKING ON", C_INFO, pat,
+        _block(rx, ry, t("WORKING ON"), C_INFO, pat,
                b.get("pattern_sub") or "break it this game — the review is watching",
                C_INFO, ymax=RY1)
 

@@ -1,4 +1,8 @@
 Pillow>=10
 comtypes>=1.2   # UI Automation: locate the Riot login fields for one-click autofill
+# Local multilingual Whisper runtime (model weights live in LocalAppData, never in the bundle).
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+sounddevice==0.5.5
 # Optional — only for the pure-Python tray (smiteless_tray.py). Not needed with the AHK tray.
 # pystray>=0.19

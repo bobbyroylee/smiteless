@@ -16,12 +16,15 @@ for _d in ("core", "ui", "tools"):            # cross-folder flat imports
     sys.path.insert(0, os.path.join(_ROOT, _d))
 import smiteconfig as cfg
 import phasecheck
+import lolcoachipc
+from smitei18n import t
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 _pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
 PYW = _pyw if os.path.exists(_pyw) else sys.executable        # windowless launcher
 OVERLAY = os.path.join(_ROOT, "ui", "smiteoverlay.py")
 SETTINGS = os.path.join(_ROOT, "ui", "smitesettings.py")
+MAIN = os.path.join(_ROOT, "smiteless_main.py")
 ICON = os.path.join(_ROOT, "assets", "smiteless.ico")
 CREATE_NO_WINDOW = 0x08000000
 
@@ -51,6 +54,50 @@ def open_overlay(auto=False):
 
 def open_settings():
     _launch(SETTINGS)
+
+
+def open_coach():
+    _launch(MAIN, "coach", "show")
+
+
+def hide_coach():
+    _launch(MAIN, "coach", "hide")
+
+
+def ask_coach():
+    _launch(MAIN, "coach", "toggle")
+
+
+def _shutdown_coach():
+    endpoint = lolcoachipc.read_endpoint()
+    if endpoint and endpoint.get("token"):
+        _launch(MAIN, "coach", "shutdown", f"--endpoint-token={endpoint['token']}")
+
+
+def _wait_for_process(pid, timeout_ms=7000):
+    """Wait for the replaced tray to release its mutex without killing an unknown PID."""
+    try:
+        open_process = _k32.OpenProcess
+        open_process.restype = wintypes.HANDLE
+        handle = open_process(0x00100000, False, int(pid))  # SYNCHRONIZE
+        if handle:
+            _k32.WaitForSingleObject(handle, int(timeout_ms))
+            _k32.CloseHandle(handle)
+    except Exception:
+        pass
+
+
+def quit_tray(icon):
+    _stop.set()
+    _shutdown_coach()
+    icon.stop()
+
+
+def reload_tray(icon):
+    _stop.set()
+    _shutdown_coach()
+    _launch(os.path.abspath(__file__), "--reload-wait", str(os.getpid()))
+    icon.stop()
 
 
 # ---------- auto-open watcher (polls the phase in-process every 2s) ----------
@@ -83,9 +130,10 @@ def _watcher():
 
 # ---------- global hotkey: Ctrl+Alt+X (native, like AHK uses) ----------
 def _hotkey():
-    MOD_ALT, MOD_CONTROL, VK_X, WM_HOTKEY = 0x0001, 0x0002, 0x58, 0x0312
+    MOD_ALT, MOD_CONTROL, VK_X, VK_C, WM_HOTKEY = 0x0001, 0x0002, 0x58, 0x43, 0x0312
     if not _u32.RegisterHotKey(None, 1, MOD_ALT | MOD_CONTROL, VK_X):
         return                                   # another app owns it (e.g. an old AHK tray)
+    coach_registered = bool(_u32.RegisterHotKey(None, 2, MOD_ALT | MOD_CONTROL, VK_C))
     try:
         msg = wintypes.MSG()
         while not _stop.is_set():
@@ -93,12 +141,19 @@ def _hotkey():
             if r in (0, -1):
                 break
             if msg.message == WM_HOTKEY:
-                open_overlay(False)
+                if msg.wParam == 2:
+                    ask_coach()
+                else:
+                    open_overlay(False)
     finally:
         _u32.UnregisterHotKey(None, 1)
+        if coach_registered:
+            _u32.UnregisterHotKey(None, 2)
 
 
-def main():
+def main(replace_pid=None):
+    if replace_pid:
+        _wait_for_process(replace_pid)
     if not _single_instance():
         return
     import pystray
@@ -106,6 +161,7 @@ def main():
 
     threading.Thread(target=_watcher, daemon=True).start()
     threading.Thread(target=_hotkey, daemon=True).start()
+    _launch(MAIN, "coach", "serve", "--owner-pid", str(os.getpid()))
 
     try:
         img = Image.open(ICON)
@@ -120,10 +176,6 @@ def main():
         cfg.set_autostart(not cfg.autostart_enabled())
         icon.update_menu()
 
-    def quit_app(icon, item):
-        _stop.set()
-        icon.stop()
-
     def _login_items():
         # rebuilt each time the menu opens; one item per saved Riot session
         try:
@@ -132,22 +184,26 @@ def main():
         except Exception:
             names = []
         if not names:
-            return [pystray.MenuItem("Set up in Settings…", lambda icon, item: open_settings())]
+            return [pystray.MenuItem(t("Set up in Settings…"), lambda icon, item: open_settings())]
         main_py = os.path.join(_ROOT, "smiteless_main.py")
         return [pystray.MenuItem(n, (lambda nm: lambda icon, item: _launch(main_py, "login", nm))(n))
                 for n in names]
 
     menu = pystray.Menu(
-        pystray.MenuItem("Open overlay", lambda icon, item: open_overlay(False), default=True),
-        pystray.MenuItem("Riot login", pystray.Menu(_login_items)),
-        pystray.MenuItem("Settings…", lambda icon, item: open_settings()),
+        pystray.MenuItem(t("Open overlay"), lambda icon, item: open_overlay(False), default=True),
+        pystray.MenuItem(t("Coach"), lambda icon, item: open_coach()),
+        pystray.MenuItem(t("Ask coach"), lambda icon, item: ask_coach()),
+        pystray.MenuItem(t("Hide coach"), lambda icon, item: hide_coach()),
+        pystray.MenuItem(t("Riot login"), pystray.Menu(_login_items)),
+        pystray.MenuItem(t("Settings…"), lambda icon, item: open_settings()),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Auto-open (queue → game)", toggle_autoopen,
+        pystray.MenuItem(t("Auto-open (queue → game)"), toggle_autoopen,
                          checked=lambda item: cfg.auto_open_enabled()),
-        pystray.MenuItem("Start with Windows", toggle_autostart,
+        pystray.MenuItem(t("Start with Windows"), toggle_autostart,
                          checked=lambda item: cfg.autostart_enabled()),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quit", quit_app),
+        pystray.MenuItem(t("Reload"), lambda icon, item: reload_tray(icon)),
+        pystray.MenuItem(t("Quit"), lambda icon, item: quit_tray(icon)),
     )
     icon = pystray.Icon("smiteless", img, "Smiteless", menu)
     icon.run()
@@ -155,4 +211,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    old_pid = None
+    if len(sys.argv) == 3 and sys.argv[1] == "--reload-wait":
+        try:
+            old_pid = int(sys.argv[2])
+        except ValueError:
+            old_pid = None
+    main(replace_pid=old_pid)

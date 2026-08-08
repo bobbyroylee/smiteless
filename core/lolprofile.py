@@ -17,6 +17,7 @@ import lollocal as llc          # YOUR match history straight off the client (Ri
 import lolfix as lf             # THE ONE FIX: the leak catalogue + the LP pricing engine
 import lolpool as lpl           # THE POOL: your champions, priced in the same LP
 import phasecheck
+from smitei18n import coach
 
 _ctx = ssl._create_unverified_context()
 
@@ -98,8 +99,6 @@ def _session(hist, games):
         if cur.get("rv") is not None and start.get("rv") is not None:
             out["lp_delta"] = cur["rv"] - start["rv"]
     return out
-
-
 def _wilson(w, n, z=1.96, upper=False):
     """Wilson score-interval bound for a win proportion — the sample-aware way to rank rates.
     A 3-0 champ has a WIDE interval (its floor sits low, ~0.44); a 40-25 main a tight one (floor
@@ -740,7 +739,7 @@ def _behavior_track(mid, ts, hits, ev, win=None):
     out = []
     for tag in sorted(hits):
         n = streak(tag)
-        label = _BEHAVIOR_TAGS.get(tag, tag)
+        label = coach(_BEHAVIOR_TAGS.get(tag, tag))
         line = f"PATTERN — {label}" + (f" · {n} games running" if n >= 2
                                        else " · watch the next rep")
         evd = pattern_evidence(tag, gs)
@@ -748,7 +747,7 @@ def _behavior_track(mid, ts, hits, ev, win=None):
             line += f" · {evd}"                    # the LP cost, in your own games
         out.append(line)
     for tag in sorted((set((prev or {}).get("hits") or []) & ev) - hits):
-        out.append(f"FIXED ✓ — {_BEHAVIOR_TAGS.get(tag, tag)} improved this game")
+        out.append(coach(f"FIXED ✓ — {_BEHAVIOR_TAGS.get(tag, tag)} improved this game"))
     return out[:3]
 
 
@@ -801,6 +800,41 @@ def _load_profile(rid):
         return p
     except Exception:
         return None
+
+
+def coach_snapshot(profile=None, max_age=24 * 3600):
+    """Return a bounded cached self-profile. This adapter never refetches match history."""
+    if profile is None:
+        try:
+            rid = open(_RID_FILE, encoding="utf-8").read().strip()
+            rid = rid if "#" in rid else None
+        except Exception:
+            rid = None
+        profile = _load_profile(rid) if rid else None
+    if not profile:
+        return None
+    cached_ts = int(profile.get("cached_ts") or time.time())
+    age = max(0, int(time.time()) - cached_ts)
+    if age > max_age:
+        return {"_unavailable": "stale", "source_age_ms": age * 1000}
+
+    games = []
+    for game in (profile.get("games") or [])[:5]:
+        games.append({
+            "champion": game.get("champ"), "role": game.get("pos"),
+            "win": bool(game.get("win")), "kda": [game.get("k"), game.get("d"), game.get("a")],
+            "in_game_performance_grade": game.get("letter"),
+            "review": list(game.get("review") or [])[:3],
+        })
+    return {
+        "rank": profile.get("rank"), "recent_games": games,
+        "wins": profile.get("wins"), "losses": profile.get("losses"),
+        "win_rate": profile.get("wr"), "averages": profile.get("avgs") or {},
+        "roles": profile.get("roles") or {}, "session": profile.get("session"),
+        "champion_pool": list(profile.get("champs") or [])[:6],
+        "insights": list(profile.get("insights") or [])[:4],
+        "source_age_ms": age * 1000,
+    }
 
 
 def build_profile(dd, key=None, count=14, riot_id=None, puuid=None, force=False):
@@ -1162,5 +1196,3 @@ def season_champs(dd, puuid, key, cap=60):
                    "avg": (round(v["score"] / v["sg"]) if v["sg"] else None)} for c, v in agg.items()),
                  key=lambda x: (-x["g"], -x["wr"]))
     return out
-
-

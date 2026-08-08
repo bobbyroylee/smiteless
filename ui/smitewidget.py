@@ -28,8 +28,11 @@ import lolgold as lgd
 import lolward as lwd
 import lolout as lot
 import loltempo as lt
+import lolcoachproactive as proactive
 import phasecheck
+import smiteaudio
 import smiteconfig as cfg
+from smitei18n import coach, lang, t, tf
 from smiteoverlay import (make_no_activate, show_no_activate, toplevel_hwnd,
                           monitors, _kernel32)
 
@@ -236,6 +239,30 @@ def _say(name, text, vol=30):
         pass
 
 
+# Phase 3 compatibility shims. The shared implementation in core/smiteaudio owns locale,
+# cache identity, playback and coordinator fallback; legacy helpers above remain import-safe
+# for an in-flight source upgrade but all public calls below route through the shared owner.
+def _cue_path(thr, vol=30):
+    return smiteaudio.chime_path(thr, vol)
+
+
+def _beep(thr, vol=30):
+    return smiteaudio.deterministic_chime(thr, vol)
+
+
+def _tts_salli(name, text, locale=None, vol=30):
+    return smiteaudio.render_online(name, text, locale or lang(), vol, "cue")
+
+
+def _tts_path(name, text, vol=30, locale=None):
+    result = smiteaudio.render_sapi(name, text, locale or lang(), vol, "cue")
+    return result.get("path") if result.get("ok") else None
+
+
+def _say(name, text, vol=30, locale=None):
+    return smiteaudio.deterministic_speech(name, text, vol, locale or lang())
+
+
 # phase -> (cache name, spoken line). MOVE gets a per-objective callout.
 _TEMPO_SPEECH = {
     "FREE": ("free", "Free objective. Their jungler's out. Take it now."),
@@ -257,8 +284,10 @@ _TEMPO_ROTATE = {
 
 def _tempo_phrase(phase, obj):
     if phase == "MOVE":
-        return _TEMPO_ROTATE.get(obj, ("rotate", "Rotate now."))
-    return _TEMPO_SPEECH.get(phase)
+        name, text = _TEMPO_ROTATE.get(obj, ("rotate", "Rotate now."))
+        return name, t(text)
+    cue = _TEMPO_SPEECH.get(phase)
+    return (cue[0], t(cue[1])) if cue else None
 
 
 class _TempoVoice:
@@ -475,14 +504,14 @@ def _render_reentry(d, card, x, y, wrapw, W, label="RE-ENTRY", clock=None):
     pc = _TONE_C.get(card.get("tone"), C_EMBER)
     tint = tuple(int(b + (c - b) * 0.16) for b, c in zip(C_VOID, pc))
     lf = _dfont(12, bold=True)
-    lines = _wwrap(d, card.get("line") or "", lf, wrapw - 20)
-    subs = _wwrap(d, card.get("sub") or "", _wfont(10), wrapw - 20)
+    lines = _wwrap(d, coach(card.get("line") or ""), lf, wrapw - 20)
+    subs = _wwrap(d, coach(card.get("sub") or ""), _wfont(10), wrapw - 20)
     ev = card.get("evidence")
-    evs = _wwrap(d, ev, _wfont(9), wrapw - 20) if ev else []
+    evs = _wwrap(d, coach(ev), _wfont(9), wrapw - 20) if ev else []
     ch = 12 + 19 + len(lines) * 17 + len(subs) * 14 + 3 + (len(evs) * 12 + 3 if evs else 0)
     d.rounded_rectangle([x, y, W - x, y + ch], radius=9, fill=tint, outline=pc, width=1)
     # header row, same shape as the RESPAWN card: what this is, and the clock it runs on
-    d.text((x + 10, y + 7), label, font=_wfont(9, 1), fill=C_MUTED)
+    d.text((x + 10, y + 7), t(label).upper(), font=_wfont(9, 1), fill=C_MUTED)
     cf = _dfont(14, bold=True)
     _lf = max(0, int(card.get("left") or 0))
     # CLOSER puts its LEAD in the clock slot (+4.2k): the number that defines the card.
@@ -510,27 +539,27 @@ def _render_dead(d, img, dead, rec, x, y, wrapw, W):
     directive for when you're back, and the buy (you're in the shop right now)."""
     tone = _TONE_C.get(dead.get("tone"), C_EMBER)
     secs = max(0, int(dead.get("secs") or 0))
-    d.text((x + 2, y), "RESPAWN", font=_wfont(12, 1), fill=C_MUTED)
-    t = f"back {secs // 60}:{secs % 60:02d}"
+    d.text((x + 2, y), t("RESPAWN"), font=_wfont(12, 1), fill=C_MUTED)
+    countdown = tf("back {time}", time=f"{secs // 60}:{secs % 60:02d}")
     f = _dfont(17, bold=True)                    # a number - display face, +2pt over the old 15
     # neutral white, never a tone color: an ember countdown next to an ember 'plan' directive
     # made the one card that must be unambiguous carry two identical ember clocks
-    d.text((W - x - 2 - d.textlength(t, font=f), y - 2), t, font=f, fill=C_TXT)
+    d.text((W - x - 2 - d.textlength(countdown, font=f), y - 2), countdown, font=f, fill=C_TXT)
     y += 24
     d.line([x, y, W - x, y], fill=C_LINE, width=1)
     y += 8
     lf = _wfont(12, 1)
-    for ln in _wwrap(d, dead.get("line") or "", lf, wrapw - 4):
+    for ln in _wwrap(d, coach(dead.get("line") or ""), lf, wrapw - 4):
         d.text((x + 2, y), ln, font=lf, fill=tone)
         y += 17
-    for ln in _wwrap(d, dead.get("sub") or "", _wfont(10), wrapw - 4):
+    for ln in _wwrap(d, coach(dead.get("sub") or ""), _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     buy = next((t_ for k, t_ in (rec.get("lines") or []) if k in ("core", "build")), None) if rec else None
     if buy:
         y += 4
-        t = f"▸  {buy}"
-        for ln in _wwrap(d, t, _tfont(t, 10, 1), wrapw - 4):
+        buy_text = f"▸  {buy}"
+        for ln in _wwrap(d, buy_text, _tfont(buy_text, 10, 1), wrapw - 4):
             d.text((x + 2, y), ln, font=_tfont(ln, 10, 1), fill=C_TXT)
             y += 15
     return img.crop((0, 0, W, y + 8))
@@ -562,11 +591,11 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
     d.text((x, y + 2), name, font=_wfont(15, 1), fill=C_TXT)
     lead = pulse.get("lead")
     if lead is not None:
-        t = f"TEAM {lead / 1000:+.1f}k"
+        chip_text = tf("TEAM {lead:+.1f}k", lead=lead / 1000)
         f = _dfont(12, bold=True)                 # a number - display face, +1pt
-        cw = int(d.textlength(t, font=f)) + 14
+        cw = int(d.textlength(chip_text, font=f)) + 14
         col = (C_GOOD if lead >= _LEAD_CHIP else (C_BAD if lead <= -_LEAD_CHIP else C_MUTED))
-        _chip(d, W - x - cw, y + 2, t, col, C_SURFACE, f)
+        _chip(d, W - x - cw, y + 2, chip_text, col, C_SURFACE, f)
     y += 26
 
     # ---- RE-ENTRY: the 90s after you respawn (lolreentry) ----
@@ -597,14 +626,14 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         # takes the card only for a live objective window, at a surrender-vote moment, or for
         # the write-off itself; every other second it is the quiet row below.
         hold = True
-        y = _render_reentry(d, out, x, y, wrapw, W, label="THE OUT")
+        y = _render_reentry(d, out, x, y, wrapw, W, label=t("THE OUT"))
     elif gold and not gold.get("quiet"):
         # GOLD CLOCK (lolgold) takes the directive slot only at the moment a wave went by,
         # or a few seconds before a cannon lands — never as a running state. It sits BELOW
         # BLEED on purpose: those two share the first fourteen minutes, and "something can
         # kill you right now" always outranks "that wave was worth 105 gold".
         hold = True
-        y = _render_reentry(d, gold, x, y, wrapw, W, label="GOLD",
+        y = _render_reentry(d, gold, x, y, wrapw, W, label="Gold",
                             clock=lambda s: f"{s // 60}:{s % 60:02d}")
     elif ward and not ward.get("quiet"):
         # WARD CLOCK (lolward) takes the directive slot when a pit is about to be fought in
@@ -613,10 +642,10 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         # one is silent for jungle/support and this one is silent for everybody else — and
         # it stands down to its row by itself whenever the tempo engine calls a fight.
         hold = True
-        y = _render_reentry(d, ward, x, y, wrapw, W, label="WARD")
+        y = _render_reentry(d, ward, x, y, wrapw, W, label="Ward")
     elif reentry:
         vc = C_ARC if reentry["verdict"] == "CLEAR" else C_MUTED
-        d.text((x + 2, y), "RE-ENTRY", font=_wfont(9, 1), fill=C_MUTED)
+        d.text((x + 2, y), t("RE-ENTRY"), font=_wfont(9, 1), fill=C_MUTED)
         d.text((x + 62, y - 1), f"{reentry['left']}s · {reentry['line'].split(' — ')[0].lower()}",
                font=_dfont(11, bold=True), fill=vc)
         y += 18
@@ -635,7 +664,7 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         avail = W - x - 62 - 8                 # one row, never a wrap: clip, don't spill
         while txt and d.textlength(txt, font=qf) > avail:
             txt = txt[:-2] + "…"
-        d.text((x + 2, y), "CLOSER", font=_wfont(9, 1), fill=C_MUTED)
+        d.text((x + 2, y), t("CLOSER"), font=_wfont(9, 1), fill=C_MUTED)
         d.text((x + 62, y - 1), txt, font=qf, fill=C_WARN if gv else C_GOOD)
         y += 18
 
@@ -651,7 +680,7 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         txt = " · ".join(bits)
         while txt and d.textlength(txt, font=qf) > avail:
             txt = txt[:-2] + "…"
-        d.text((x + 2, y), "THE OUT", font=_wfont(9, 1), fill=C_MUTED)
+        d.text((x + 2, y), t("THE OUT"), font=_wfont(9, 1), fill=C_MUTED)
         d.text((x + 62, y - 1), txt, font=qf,
                fill=C_GOOD if out.get("won_txt") else
                (C_BAD if out.get("verdict") == "CALL IT" else C_ARC))
@@ -671,7 +700,7 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         txt = " · ".join(bits)
         while txt and d.textlength(txt, font=qf) > avail:
             txt = txt[:-2] + "…"
-        d.text((x + 2, y), "GOLD", font=_wfont(9, 1), fill=C_MUTED)
+        d.text((x + 2, y), t("Gold").upper(), font=_wfont(9, 1), fill=C_MUTED)
         d.text((x + 62, y - 1), txt, font=qf,
                fill=C_GOOD if gold.get("ahead") else (C_WARN if gold.get("under") else C_ARC))
         y += 18
@@ -690,7 +719,7 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         while txt and d.textlength(txt, font=qf) > avail:
             txt = txt[:-2] + "…"
         gap = ward.get("gap")
-        d.text((x + 2, y), "WARD", font=_wfont(9, 1), fill=C_MUTED)
+        d.text((x + 2, y), t("Ward").upper(), font=_wfont(9, 1), fill=C_MUTED)
         d.text((x + 62, y - 1), txt, font=qf,
                fill=C_WARN if ward.get("under") else (C_GOOD if (gap or 0) >= 0 else C_ARC))
         y += 18
@@ -702,7 +731,7 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
     if tempo and tempo["phase"] == "FARM":
         # routine farm reminder: a plain quiet row - the bordered card is reserved for
         # phases that are actually a decision (v0.2.93: farm lines stand alone)
-        for ln in _wwrap(d, tempo["line"], _wfont(11), wrapw - 4):
+        for ln in _wwrap(d, coach(tempo["line"]), _wfont(11), wrapw - 4):
             d.text((x + 2, y), ln, font=_wfont(11), fill=C_MUTED)
             y += 15
         y += 5
@@ -710,10 +739,10 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         pc = _PHASE_C.get(tempo["phase"], C_TXT)
         tint = tuple(int(b + (c - b) * 0.16) for b, c in zip(C_VOID, pc))
         lf = _dfont(12, bold=True)                # verdict text: bold display face (TAKE/GIVE/50-50 etc.)
-        lines = _wwrap(d, tempo["line"], lf, wrapw - 20)
+        lines = _wwrap(d, coach(tempo["line"]), lf, wrapw - 20)
         subs = []
         if tempo.get("sub") and tempo["phase"] in ("FREE", "TAKE", "GIVE", "EVEN", "FORCE", "PUSH"):
-            subs = _wwrap(d, tempo["sub"], _wfont(10), wrapw - 20)
+            subs = _wwrap(d, coach(tempo["sub"]), _wfont(10), wrapw - 20)
         ch = 12 + len(lines) * 17 + (len(subs) * 14 + 3 if subs else 0)
         d.rounded_rectangle([x, y, W - x, y + ch], radius=9, fill=tint, outline=pc, width=1)
         yy = y + 7
@@ -733,13 +762,13 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         nxt = objs2[0] if objs2 else None
         parts = []
         if nxt:
-            parts.append(f"{nxt['label']} " + ("UP" if nxt["secs"] <= 0
+            parts.append(f"{t(nxt['label'])} " + (t("UP") if nxt["secs"] <= 0
                                                else f"{nxt['secs'] // 60}:{nxt['secs'] % 60:02d}"))
         if recall and recall.get("gap", 1) == 0 and not parts:
             parts.append(recall["text"])
         if parts:
             f2 = _dfont(11, bold=True)
-            d.text((x + 2, y), "NEXT", font=_wfont(9, 1), fill=C_MUTED)
+            d.text((x + 2, y), t("NEXT"), font=_wfont(9, 1), fill=C_MUTED)
             d.text((x + 40, y - 1), "  ·  ".join(parts), font=f2,
                    fill=(C_EMBER if (nxt and (nxt["secs"] <= 0 or nxt.get("urgent"))) else C_ARC))
             y += 18
@@ -749,16 +778,18 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         if gk2:
             urgent = (f"◎ gank {gk2['lane'].lower()} — {gk2['champ']} {gk2['lvl']} vs {gk2['vs_lvl']}", C_GOOD)
         elif jg2 and jg2.get("state") == "nosign":
-            urgent = (f"⌖ {jg2['champ']} NO SIGN {jg2['idle']}s — respect the gank", C_BAD)
+            urgent = (tf("⌖ {champ} NO SIGN {seconds}s — respect the gank",
+                         champ=jg2["champ"], seconds=jg2["idle"]), C_BAD)
         elif jg2 and jg2.get("state") == "dead":
             r2 = jg2.get("respawn") or 0
-            urgent = (f"⌖ {jg2['champ']} DEAD{f' — back {r2}s' if r2 else ''} · free map", C_GOOD)
+            urgent = (tf("⌖ {champ} DEAD{back} · free map", champ=jg2["champ"],
+                         back=(tf(" — back {seconds}s", seconds=r2) if r2 else "")), C_GOOD)
         if urgent:
             txt2, col2 = urgent
             for ln in _wwrap(d, txt2, _tfont(txt2, 10, 1), wrapw - 4):
                 d.text((x + 2, y), ln, font=_tfont(ln, 10, 1), fill=col2)
                 y += 15
-        d.text((x + 2, y + 2), "hover = full detail", font=_wfont(8), fill=C_FAINT)
+        d.text((x + 2, y + 2), t("hover = full detail"), font=_wfont(8), fill=C_FAINT)
         return img.crop((0, 0, W, y + 16))
 
     # ---- objective timer chips ----
@@ -771,33 +802,39 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
         f = _dfont(11, bold=True)                  # timers - display face, +1pt over the old 10
         for o in objs[:3]:
             up = o["secs"] <= 0
-            t = f"{o['label']} UP" if up else f"{o['label']} {o['secs'] // 60}:{o['secs'] % 60:02d}"
+            timer_text = tf("{objective} UP", objective=t(o["label"])) if up else \
+                f"{t(o['label'])} {o['secs'] // 60}:{o['secs'] % 60:02d}"
             fg = C_EMBER if up or o.get("urgent") else (C_ARC if o.get("setup") else C_MUTED)
-            cx += _chip(d, cx, y, t, fg, C_SURFACE, f) + 6
+            cx += _chip(d, cx, y, timer_text, fg, C_SURFACE, f) + 6
         y += 24
 
     # ---- intel rows (one font, one glyph column) ----
     sp = pulse.get("spike")
     rec_lines = list((rec.get("lines") or [])[:2] if pulse else (rec.get("lines") or []))
     if sp:                                        # dedupe: spiked enemy already named below?
-        for i, (k, t) in enumerate(rec_lines):
-            if sp["name"] in t:
-                rec_lines[i] = (k, t.split(" — ")[0])
+        for i, (k, item_line) in enumerate(rec_lines):
+            if sp["name"] in item_line:
+                rec_lines[i] = (k, item_line.split(" — ")[0])
     rows = []
     jg = pulse.get("jungle")
     if jg:
         s = jg.get("state")
         if s == "dead":
             r = jg.get("respawn") or 0
-            rows.append(("⌖", f"{jg['champ']} DEAD{f' — back {r}s' if r else ''} · free map", C_GOOD, 1))
+            rows.append(("⌖", tf("{champ} DEAD{back} · free map", champ=jg["champ"],
+                                 back=(tf(" — back {seconds}s", seconds=r) if r else "")), C_GOOD, 1))
         elif s == "seen":
-            rows.append(("⌖", f"{jg['champ']} seen {str(jg['side']).upper()} · {jg['what']} {jg['ago']}s ago", C_ARC, 1))
+            rows.append(("⌖", tf("{champ} seen {side} · {what} {seconds}s ago", champ=jg["champ"],
+                                 side=t(str(jg["side"]).upper()), what=coach(jg["what"]),
+                                 seconds=jg["ago"]), C_ARC, 1))
         elif s == "nosign":
-            rows.append(("⌖", f"{jg['champ']} NO SIGN {jg['idle']}s — respect the gank", C_BAD, 1))
+            rows.append(("⌖", tf("{champ} NO SIGN {seconds}s — respect the gank",
+                                 champ=jg["champ"], seconds=jg["idle"]), C_BAD, 1))
         elif s == "moving":
-            rows.append(("⌖", f"{jg['champ']} on the move ({jg.get('idle', 0)}s quiet)", C_EMBER, 0))
+            rows.append(("⌖", tf("{champ} on the move ({seconds}s quiet)", champ=jg["champ"],
+                                 seconds=jg.get("idle", 0)), C_EMBER, 0))
         elif s == "farming":
-            rows.append(("⌖", f"{jg['champ']} farm registered", C_MUTED, 0))
+            rows.append(("⌖", tf("{champ} farm registered", champ=jg["champ"]), C_MUTED, 0))
     gk = pulse.get("gank")
     if gk:
         rows.append(("◎", f"gank {gk['lane'].lower()} — {gk['champ']} {gk['lvl']} vs {gk['vs_lvl']}", C_GOOD, 1))
@@ -818,15 +855,15 @@ def _render_body(dd, rec, pulse, recall, dead=None, W=318, ref=False, reentry=No
     if recall:
         g = recall.get("gap", 0)
         rc = C_EMBER if g == 0 else (C_ARC if g <= 350 else C_MUTED)
-        t = "⌂ " + recall["text"]
-        for ln in _wwrap(d, t, _tfont(t, 10, 1), wrapw):
+        recall_text = "⌂ " + recall["text"]
+        for ln in _wwrap(d, recall_text, _tfont(recall_text, 10, 1), wrapw):
             d.text((x, y), ln, font=_tfont(ln, 10, 1), fill=rc)
             y += 15
         y += 1
     for kind, txt in rec_lines:
         tag = KIND_TAG.get(kind, "▸")
-        t = f"{tag}  {txt}" if tag else txt
-        for ln in _wwrap(d, t, _tfont(t, 10, kind == "core"), wrapw):
+        item_text = f"{tag}  {txt}" if tag else txt
+        for ln in _wwrap(d, item_text, _tfont(item_text, 10, kind == "core"), wrapw):
             d.text((x, y), ln, font=_tfont(ln, 10, kind == "core"), fill=_KIND_C.get(kind, C_TXT))
             y += 15
     return img.crop((0, 0, W, y + 8))
@@ -926,95 +963,103 @@ def _render_legend(W=330):
             y += 14
         y += 3
 
-    section("TEMPO — THE CARD'S COLOR IS THE CALL")
+    section(t("TEMPO — THE CARD'S COLOR IS THE CALL"))
     for ph, txt in _LEGEND_PHASES:
-        row(ph, _PHASE_C.get(ph, C_TXT), txt, 46, dfont=True)
+        row(t(ph), _PHASE_C.get(ph, C_TXT), t(txt), 46, dfont=True)
 
-    section("INTEL")
+    section(t("INTEL"))
     for g, col, txt in _LEGEND_GLYPHS:
-        row(g, col, txt, 20)
+        row(g, col, t(txt), 20)
 
-    section("CHIPS")
+    section(t("CHIPS"))
     f = _dfont(11, bold=True)
     cx = x
-    cx += _chip(d, cx, y, "WIN 61%", C_GOOD, C_SURFACE, f) + 6
-    cx += _chip(d, cx, y, "Drake 1:20", C_MUTED, C_SURFACE, f) + 6
-    _chip(d, cx, y, "Drake UP", C_EMBER, C_SURFACE, f)
+    cx += _chip(d, cx, y, t("WIN 61%"), C_GOOD, C_SURFACE, f) + 6
+    cx += _chip(d, cx, y, t("Drake 1:20"), C_MUTED, C_SURFACE, f) + 6
+    _chip(d, cx, y, t("Drake UP"), C_EMBER, C_SURFACE, f)
     y += 25
     for txt in ("WIN / BEHIND — live power read from gold + XP + drakes; never rank or winrate.",
                 "objective timers — amber = UP or urgent · cyan = your setup window."):
-        for ln in _wwrap(d, txt, _wfont(10), wrapw - 4):
+        for ln in _wwrap(d, t(txt), _wfont(10), wrapw - 4):
             d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
             y += 14
         y += 3
 
-    section("ITEM LINES")
+    section(t("ITEM LINES"))
     for kind, txt in _LEGEND_ITEMS:
         tag = KIND_TAG.get(kind) or "·"
-        row(tag, _KIND_C.get(kind, C_TXT), txt, 20)
+        row(tag, _KIND_C.get(kind, C_TXT), t(txt), 20)
 
-    section("RESPAWN")
-    for ln in _wwrap(d, "while dead, everything collapses to one card: your respawn countdown, "
-                        "the play for when you're back, and the buy.", _wfont(10), wrapw - 4):
+    section(t("RESPAWN"))
+    for ln in _wwrap(d, t("while dead, everything collapses to one card: your respawn countdown, "
+                          "the play for when you're back, and the buy."), _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
 
-    section("RE-ENTRY — THE 90s AFTER YOU COME BACK")
-    for ln in _wwrap(d, "two deaths inside 90s is the split that costs you games. The clock "
-                        "runs from respawn; the verdict is read off their death timers.",
+    section(t("RE-ENTRY — THE 90s AFTER YOU COME BACK"))
+    for ln in _wwrap(d, t("two deaths inside 90s is the split that costs you games. The clock "
+                          "runs from respawn; the verdict is read off their death timers."),
                      _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     y += 4
+    reentry_w = max(int(d.textlength(t(vd), font=_dfont(11, bold=True)))
+                    for vd, _col, _txt in _LEGEND_REENTRY) + 10
     for vd, col, txt in _LEGEND_REENTRY:
-        row(vd, col, txt, 46, dfont=True)
+        row(t(vd), col, t(txt), reentry_w, dfont=True)
 
-    section("CLOSER — THE GAME YOU'RE ALREADY WINNING")
-    for ln in _wwrap(d, "from 20:00, and only while you're 2k+ up: the shortest structural "
-                        "path to their nexus, read off the turret + inhibitor events, and "
-                        "what you've given back of your peak lead.",
+    section(t("CLOSER — THE GAME YOU'RE ALREADY WINNING"))
+    for ln in _wwrap(d, t("from 20:00, and only while you're 2k+ up: the shortest structural "
+                          "path to their nexus, read off the turret + inhibitor events, and "
+                          "what you've given back of your peak lead."),
                      _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     y += 4
+    closer_w = max(int(d.textlength(t(vd), font=_dfont(11, bold=True)))
+                  for vd, _col, _txt in _LEGEND_CLOSER) + 10
     for vd, col, txt in _LEGEND_CLOSER:
-        row(vd, col, txt, 46, dfont=True)
+        row(t(vd), col, t(txt), closer_w, dfont=True)
 
-    section("GOLD CLOCK — THE FIRST TEN MINUTES")
-    for ln in _wwrap(d, "minions are a schedule, not a rate: one wave every 30s from 1:05, "
-                        "every 3rd carrying a cannon. Your CS is counted against the ones "
-                        "that actually arrived in YOUR lane, and kills count as the CS they "
-                        "were worth — so roaming never reads as farming badly.",
+    section(t("GOLD CLOCK — THE FIRST TEN MINUTES"))
+    for ln in _wwrap(d, t("minions are a schedule, not a rate: one wave every 30s from 1:05, "
+                          "every 3rd carrying a cannon. Your CS is counted against the ones "
+                          "that actually arrived in YOUR lane, and kills count as the CS they "
+                          "were worth — so roaming never reads as farming badly."),
                      _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     y += 4
+    gold_w = max(int(d.textlength(t(vd), font=_dfont(11, bold=True)))
+                 for vd, _col, _txt in _LEGEND_GOLD) + 10
     for vd, col, txt in _LEGEND_GOLD:
-        row(vd, col, txt, 52, dfont=True)
+        row(t(vd), col, t(txt), gold_w, dfont=True)
 
-    section("WARD CLOCK — THE VISION WAR")
-    for ln in _wwrap(d, "jungle + support only, the two roles your profile grades on vision. "
-                        "Vision score only ever goes UP while a ward of yours is alive — so a "
-                        "score that hasn't moved is a measurement that the map is dark, not a "
-                        "guess. The row is you against the enemy in your own role.",
+    section(t("WARD CLOCK — THE VISION WAR"))
+    for ln in _wwrap(d, t("jungle + support only, the two roles your profile grades on vision. "
+                          "Vision score only ever goes UP while a ward of yours is alive — so a "
+                          "score that hasn't moved is a measurement that the map is dark, not a "
+                          "guess. The row is you against the enemy in your own role."),
                      _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     y += 4
+    ward_w = max(int(d.textlength(t(vd), font=_dfont(11, bold=True)))
+                 for vd, _col, _txt in _LEGEND_WARD) + 10
     for vd, col, txt in _LEGEND_WARD:
-        row(vd, col, txt, 46, dfont=True)
+        row(t(vd), col, t(txt), ward_w, dfont=True)
 
-    section("THE OUT — THE GAME YOU'RE LOSING")
-    for ln in _wwrap(d, "the CLOSER's mirror, from 15:00 and only while you're 2k+ down: is "
-                        "there still a mechanism in this game, and what is it? Every out is a "
-                        "fact with a clock on it. The row also carries what you've WON BACK "
-                        "off your worst — the comeback, in measured gold, before it's felt.",
+    section(t("THE OUT — THE GAME YOU'RE LOSING"))
+    for ln in _wwrap(d, t("the CLOSER's mirror, from 15:00 and only while you're 2k+ down: is "
+                          "there still a mechanism in this game, and what is it? Every out is a "
+                          "fact with a clock on it. The row also carries what you've WON BACK "
+                          "off your worst — the comeback, in measured gold, before it's felt."),
                      _wfont(10), wrapw - 4):
         d.text((x + 2, y), ln, font=_wfont(10), fill=C_MUTED)
         y += 14
     y += 4
     for vd, col, txt in _LEGEND_OUT:
-        row(vd, col, txt, 56, dfont=True)
+        row(t(vd), col, t(txt), 56, dfont=True)
     return img.crop((0, 0, W, y + 10))
 
 
@@ -1131,7 +1176,7 @@ def main():
 
     # shown instead of the slider when the cursor is over a CLICK-THROUGH widget (in a
     # live game): the one place the ctrl+alt affordance is taught, exactly when needed
-    hint = tk.Label(hdr, text="ctrl+alt to touch", font=skin.body(8), fg=FAINT, bg=SURFACE)
+    hint = tk.Label(hdr, text=t("ctrl+alt to touch"), font=skin.body(8), fg=FAINT, bg=SURFACE)
 
     def _vol_done(_e):
         try:
@@ -1139,13 +1184,13 @@ def main():
         except Exception:
             pass
         if st["vol"] > 0 and not st.get("muted", False):   # hear the new level immediately
-            threading.Thread(target=_say, args=("hello", "Tempo online.", st["vol"]),
+            threading.Thread(target=_say, args=("hello", t("Tempo online."), st["vol"], lang()),
                              daemon=True).start()
     vol.bind("<ButtonRelease-1>", _vol_done)
 
     # the body is ONE drawn image (see _render_body) — a HUD, not a stack of text labels.
     from PIL import Image, ImageTk
-    champ = tk.Label(outer, text="waiting for a live game…", font=skin.body(11, bold=True),
+    champ = tk.Label(outer, text=t("waiting for a live game…"), font=skin.body(11, bold=True),
                      fg=MUTED, bg=VOID, anchor="w")
     champ.pack(fill="x", padx=10, pady=(6, 7))
     shot = tk.Label(outer, bg=VOID, bd=0)
@@ -1156,7 +1201,7 @@ def main():
         live_dot.config(fg=ARC if rec else FAINT)        # §5.3: ARC while a live game is read
         if not rec:
             shot.pack_forget()
-            champ.config(text="waiting for a live game…", fg=MUTED)
+            champ.config(text=t("waiting for a live game…"), fg=MUTED)
             champ.pack(fill="x", padx=10, pady=(6, 7))
             st["hot"] = False
             # very first run ever: open the LEGEND once beside "waiting…" so the vocabulary
@@ -1258,7 +1303,7 @@ def main():
         # same '✦ SMITELESS <SUFFIX>' brand treatment as the main header (§4/§5.3), suffix LEGEND
         tk.Label(lh, text=" " + skin.BRAND_MARK, font=skin.display(skin.SMALL, bold=True),
                  fg=EMBER, bg=SURFACE).pack(side="left")
-        tk.Label(lh, text=" LEGEND", font=skin.display(skin.SMALL, bold=True), fg=EMBER,
+        tk.Label(lh, text=" " + t("LEGEND"), font=skin.display(skin.SMALL, bold=True), fg=EMBER,
                  bg=SURFACE).pack(side="left", padx=(0, 3), pady=3)
         lx = tk.Label(lh, text="✕ ", font=skin.body(9, bold=True), fg=MUTED, bg=SURFACE, cursor="hand2")
         lx.pack(side="right")
@@ -1337,14 +1382,15 @@ def main():
         if audio_on and dvol > 0:                         # warm the chime cache so the first cue is instant
             threading.Thread(target=lambda: [_cue_path(t, dvol) for t in (45, 30, 15)], daemon=True).start()
         if tempo_on and voice_on and dvol > 0:            # pre-render the voice lines (one-time)
-            threading.Thread(target=lambda: [_tts_salli(nm, tx) for nm, tx in
+            threading.Thread(target=lambda: [_tts_salli(nm, t(tx), lang(), dvol) for nm, tx in
                                              list(_TEMPO_SPEECH.values()) + list(_TEMPO_ROTATE.values())
                                              + [("rotate", "Rotate now."), ("hello", "Tempo online.")]],
                              daemon=True).start()
         if bleed_on and voice_on and dvol > 0:            # pre-render the BLEED line (one-time)
-            threading.Thread(target=lambda: _tts_salli("backoff", "Back off."), daemon=True).start()
+            threading.Thread(target=lambda: _tts_salli("backoff", t("Back off."), lang(), dvol),
+                             daemon=True).start()
         if ward_on and voice_on and dvol > 0:             # ...and the WARD CLOCK's (one-time)
-            threading.Thread(target=lambda: _tts_salli("wardit", "Ward it."), daemon=True).start()
+            threading.Thread(target=lambda: _tts_salli("wardit", t("Ward it."), lang(), dvol), daemon=True).start()
 
         def dragon_audio(secs):
             if secs is None:
@@ -1473,13 +1519,27 @@ def main():
                                              (pulse or {}).get("winprob"))
                 except Exception:
                     ward = None
+            # The proactive coordinator never starts another one-second Live Client poll.
+            # Publish only typed transitions/counters from this already-shared frame; detector
+            # state advances regardless of either audio mute or proactive opt-in.
+            if raw is not None:
+                try:
+                    proactive.publish_widget_state(
+                        (raw.get("gameData") or {}).get("gameTime") or 0.0,
+                        tempo=(pulse or {}).get("tempo"),
+                        guards={"bleed": bleed, "ward": ward, "closer": close,
+                                "gold": gold, "out": out, "reentry": reentry},
+                        events=((raw.get("events") or {}).get("Events") or []),
+                    )
+                except Exception:
+                    pass
             # Spoken once per window, and never more than BLEED_SAY times a game: this fires
             # while your eyes are on the lane, which is the whole point of saying it out loud,
             # but a voice that repeats is a voice you learn to ignore.
             if (bleed and voice_on and st["vol"] > 0 and not st.get("muted", False)
                     and bleed["calls"] > bled["said"] and bled["said"] < BLEED_SAY):
                 bled["said"] = bleed["calls"]
-                threading.Thread(target=_say, args=("backoff", "Back off.", st["vol"]),
+                threading.Thread(target=_say, args=("backoff", t("Back off."), st["vol"]),
                                  daemon=True).start()
             # The WARD CLOCK's own callout, on the same contract as BLEED's: once per card
             # WINDOW (lolward.Guard.calls counts windows, not frames, precisely so a voice line
@@ -1489,7 +1549,7 @@ def main():
                     and not st.get("muted", False) and ward["calls"] > warded["said"]
                     and warded["said"] < WARD_SAY):
                 warded["said"] = ward["calls"]
-                threading.Thread(target=_say, args=("wardit", "Ward it.", st["vol"]),
+                threading.Thread(target=_say, args=("wardit", t("Ward it."), st["vol"]),
                                  daemon=True).start()
             # "you're up" chime: one soft two-note cue as the respawn timer crosses ~1.5s,
             # so eyes-off-screen death time ends with a nudge instead of lost seconds.
@@ -1508,7 +1568,7 @@ def main():
                 if not seen and voice_on and st["vol"] > 0 and not st.get("muted", False):
                     # first live data of the game: a short hello — confirms the whole audio
                     # pipeline (render + playback) is working instead of failing silently.
-                    threading.Thread(target=_say, args=("hello", "Tempo online.", st["vol"]),
+                    threading.Thread(target=_say, args=("hello", t("Tempo online."), st["vol"], lang()),
                                      daemon=True).start()
                 seen, last_ok = True, now
                 q.put({"rec": rec, "pulse": pulse if intel_on else None, "recall": recall,

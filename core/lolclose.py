@@ -53,6 +53,8 @@ the habit, straight out of the behavior ledger, so it is your data talking and n
 """
 import time
 
+from smitei18n import t, tf
+
 CLOSE_FROM = 20 * 60.0     # game-time the closer opens (the tag itself fires from 25:00 —
                            # a warning that arrives with the mistake is not a warning)
 LEAD_MIN = 2000.0          # est-gold team lead that counts as ahead: the threw_ahead bar
@@ -66,7 +68,7 @@ SIEGE_STEP = 1             # turrets left in front of an inhibitor to call CLOSE
 LANE_N = {"L": "top", "C": "mid", "R": "bot"}
 _EV_TTL = 600.0            # re-read the behavior ledger at most this often
 
-_EV = {"t": 0.0, "text": None}
+_EV = {"t": 0.0, "raw": None}
 
 
 def _evidence():
@@ -74,18 +76,18 @@ def _evidence():
     9W-4L'), or None when the ledger doesn't have both sides yet. Cached — it's a disk read
     and this is called from a 1s poll loop."""
     now = time.monotonic()
-    if _EV["text"] is not None and (now - _EV["t"]) < _EV_TTL:
-        return _EV["text"]
-    txt = None
+    if _EV["raw"] is not None and (now - _EV["t"]) < _EV_TTL:
+        return tf("your games where you died ahead after 25:00 — {evidence}",
+                  evidence=_EV["raw"])
+    raw = None
     try:
         import lolprofile as lp
         raw = lp.pattern_evidence("threw_ahead")
-        if raw:                       # "with it: 2W-5L · without: 9W-4L" — name what "it" is
-            txt = "your games where you died ahead after 25:00 — " + raw
     except Exception:
-        txt = None
-    _EV["t"], _EV["text"] = now, txt
-    return txt
+        raw = None
+    _EV["t"], _EV["raw"] = now, raw
+    return (tf("your games where you died ahead after 25:00 — {evidence}", evidence=raw)
+            if raw else None)
 
 
 # ---------------------------------------------------------------- the structure map ----
@@ -200,8 +202,8 @@ def _death_line(cost, baron):
     this is never the generic 'don't die' — it's the number."""
     c = int(round(cost))
     if baron is not None and baron <= max(0.0, cost):
-        return f"dying here costs {c}s — baron is up inside that"
-    return f"dying here costs {c}s at this level"
+        return tf("dying here costs {seconds}s — baron is up inside that", seconds=c)
+    return tf("dying here costs {seconds}s at this level", seconds=c)
 
 
 def _verdict(ctx):
@@ -221,7 +223,8 @@ def _verdict(ctx):
     cost = float(ctx.get("death_cost") or 0.0)
     baron = ctx.get("baron_secs")
     card = {"lead": lead, "give": give, "clock_txt": _k(lead),
-            "give_txt": (f"gave back {give / 1000:.1f}k of {(lead + give) / 1000:.1f}k"
+            "give_txt": (tf("gave back {given:.1f}k of {peak:.1f}k",
+                            given=give / 1000, peak=(lead + give) / 1000)
                          if give >= GIVEBACK_MIN else None)}
 
     # ---- 1. throw risk. It outranks the structural calls: walking into a lost fight ON
@@ -231,13 +234,17 @@ def _verdict(ctx):
     b_bar, e_bar = (GIVE_BODY, GIVE_E) if tight else (BODY_RISK, E_RISK)
     import loltempo as lt
     if e <= e_bar or (bodies <= b_bar and e < lt.E_TAKE):
-        why = (f"down {abs(bodies):.0f} " + ("bodies" if abs(bodies) >= 2 else "body")
-               if bodies <= -1.0 else "you lose a fight right now")
-        sub = _death_line(cost, baron) + " · " + _LATE.get(role, _LATE["mid"])
+        why = (tf("down {count:.0f} bodies", count=abs(bodies))
+               if bodies <= -2.0 else
+               t("down 1 body") if bodies <= -1.0 else
+               t("you lose a fight right now"))
+        sub = _death_line(cost, baron) + " · " + t(_LATE.get(role, _LATE["mid"]))
         if tight:
-            sub = f"you've given back {give / 1000:.1f}k already · " + sub
+            sub = tf("you've given back {given:.1f}k already · {instruction}",
+                     given=give / 1000, instruction=sub)
         card.update(verdict="HOLD", tone="hold", quiet=False,
-                    line=f"HOLD — you're {_k(lead)} and {why}", sub=sub)
+                    line=tf("HOLD — you're {lead} and {reason}",
+                            lead=_k(lead), reason=why), sub=sub)
         return card
 
     # ---- 2. their inhibitor is open. This is a CLOCK, and it is the highest-value fact
@@ -247,14 +254,17 @@ def _verdict(ctx):
         mm = f"{int(left) // 60}:{int(left) % 60:02d}"
         if e >= E_END or bodies >= 1.0:
             dead = ctx.get("dead_enemies") or []
-            extra = (f" · {len(dead)} of them dead" if len(dead) >= 2 else "")
+            extra = (tf(" · {count} of them dead", count=len(dead))
+                     if len(dead) >= 2 else "")
             card.update(verdict="END", tone="go", quiet=False,
-                        line=f"END IT — {LANE_N[lane]} inhib open {mm}{extra}",
-                        sub="nexus turrets as five — baron is a detour, the inhib clock isn't")
+                        line=tf("END IT — {lane} inhib open {time}{extra}",
+                                lane=t(LANE_N[lane]), time=mm, extra=extra),
+                        sub=t("nexus turrets as five — baron is a detour, the inhib clock isn't"))
             return card
         card.update(verdict="SIEGE", tone="plan", quiet=False,
-                    line=f"SIEGE — {LANE_N[lane]} inhib open {mm}, but you lose a 5v5",
-                    sub="push the wave in and take it from range — do not dive the nexus turrets")
+                    line=tf("SIEGE — {lane} inhib open {time}, but you lose a 5v5",
+                            lane=t(LANE_N[lane]), time=mm),
+                    sub=t("push the wave in and take it from range — do not dive the nexus turrets"))
         return card
 
     # ---- 3. one turret from an inhibitor. That turret is the game; it is not a skirmish,
@@ -264,21 +274,23 @@ def _verdict(ctx):
         n, lane = ready[0]
         # n is the number of turrets still STANDING in front of that inhibitor: at 0 the
         # inhibitor itself is the next thing you hit, at 1 the inhib turret still is.
-        head = (f"CLOSE — {LANE_N[lane]} inhibitor is next, nothing in front of it" if n == 0
-                else f"CLOSE — {LANE_N[lane]} is one turret from their inhib")
+        head = (tf("CLOSE — {lane} inhibitor is next, nothing in front of it",
+                   lane=t(LANE_N[lane])) if n == 0 else
+                tf("CLOSE — {lane} is one turret from their inhib", lane=t(LANE_N[lane])))
         if ctx.get("tempo_urgent"):
             card.update(verdict="CLOSE", tone="plan", quiet=True, line=head,
-                        sub="take it as five off the next wave, then reset — don't chase")
+                        sub=t("take it as five off the next wave, then reset — don't chase"))
             return card
         card.update(verdict="CLOSE", tone="plan", quiet=False, line=head,
-                    sub=f"{_k(lead)} up: take it as five off the next wave, then reset — don't chase")
+                    sub=tf("{lead} up: take it as five off the next wave, then reset — don't chase",
+                           lead=_k(lead)))
         return card
 
     # ---- 4. ahead, nothing open, nothing burning: a quiet row, never a card. A coach that
     #         talks when there is nothing to say is a coach you turn off.
     card.update(verdict="BANK", tone="plan", quiet=True,
-                line=f"BANK — {_k(lead)} up, nothing free here",
-                sub="take towers and vision, make them come to you")
+                line=tf("BANK — {lead} up, nothing free here", lead=_k(lead)),
+                sub=t("take towers and vision, make them come to you"))
     return card
 
 

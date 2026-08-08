@@ -76,18 +76,25 @@ _DD_MEMO = {}              # parse the static data once per process (it's the sa
 
 
 def ddragon():
+    """Load Data Dragon in the active UI locale, with a locale-scoped cache."""
+    try:
+        from smitei18n import lang
+        locale = "pt_BR" if lang() == "pt_BR" else "en_US"
+    except Exception:
+        locale = "pt_BR"
     ver = _ddragon_version()
-    if _DD_MEMO.get("ver") == ver and _DD_MEMO.get("dd") is not None:
+    memo_key = (ver, locale)
+    if _DD_MEMO.get("key") == memo_key and _DD_MEMO.get("dd") is not None:
         return _DD_MEMO["dd"]
     os.makedirs(CACHE, exist_ok=True)
     def load(name):
-        fp = os.path.join(CACHE, f"{ver}_{name}.json")
+        fp = os.path.join(CACHE, f"{ver}_{locale}_{name}.json")
         if os.path.exists(fp):
             try:
                 return json.load(open(fp, encoding="utf-8"))
             except Exception:
                 pass  # corrupt cache file -> re-fetch below
-        d = http(f"https://ddragon.leagueoflegends.com/cdn/{ver}/data/en_US/{name}.json")
+        d = http(f"https://ddragon.leagueoflegends.com/cdn/{ver}/data/{locale}/{name}.json")
         try:
             _atomic_json(fp, d)
         except Exception:
@@ -110,9 +117,9 @@ def ddragon():
         id2tags[cid] = c.get("tags", [])
         id2info[cid] = c.get("info", {})        # attack/defense/magic/difficulty 0-10 (for good/bad tags)
         name2id[norm(c["name"])] = cid; name2id[norm(c["id"])] = cid
-    dd = dict(ver=ver, items=items, item_data=item_data, runes=runes, trees=trees, spells=spells,
+    dd = dict(ver=ver, locale=locale, items=items, item_data=item_data, runes=runes, trees=trees, spells=spells,
               name2id=name2id, id2name=id2name, id2key=id2key, id2tags=id2tags, id2info=id2info, norm=norm)
-    _DD_MEMO["ver"], _DD_MEMO["dd"] = ver, dd
+    _DD_MEMO["key"], _DD_MEMO["dd"] = memo_key, dd
     return dd
 
 # ---------- op.gg ----------

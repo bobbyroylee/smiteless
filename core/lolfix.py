@@ -53,6 +53,7 @@ for _d in ("core", "ui", "tools"):
         sys.path.insert(0, os.path.join(_R, _d))
 
 import lolqueue as lq                  # ONE BRAIN for "is this split proven?" (lq._z_worse)
+from smitei18n import t, tf
 
 LEDGER = os.path.expanduser("~/.claude/cache/riot/behavior_ledger.json")
 LP_HISTORY = os.path.expanduser("~/.claude/cache/lol_lp_history.json")
@@ -202,8 +203,8 @@ def _row(rows, tag, n_total, lp_swing, base=0.5):
       thin   — not evaluable often enough yet; says how many more games it needs."""
     meta = LEAKS[tag]
     ev, hit, miss = _split(rows, tag)
-    out = {"tag": tag, "short": meta["short"], "label": meta["label"], "fix": meta["fix"],
-           "guard": meta["guard"], "n_ev": len(ev), "n_hit": len(hit),
+    out = {"tag": tag, "short": t(meta["short"]), "label": t(meta["label"]),
+           "fix": t(meta["fix"]), "guard": t(meta["guard"]), "n_ev": len(ev), "n_hit": len(hit),
            "rate": (len(hit) / len(ev)) if ev else 0.0,
            "per10": round(10.0 * len(hit) / n_total, 1) if n_total else 0.0,
            "lp10": 0.0, "gap": 0.0, "z": 0.0, "evidence": "", "state": "thin",
@@ -221,14 +222,14 @@ def _row(rows, tag, n_total, lp_swing, base=0.5):
         # the most actionable thing the board can tell you. The count carries the row, and
         # the evidence line says which side is missing instead of printing an empty split.
         out["state"] = "rate"
-        out["evidence"] = (f"with it: {w_hit}W-{len(hit) - w_hit}L  ·  "
-                           "no games without it to compare"
+        out["evidence"] = (tf("with it: {wins}W-{losses}L  ·  no games without it to compare",
+                              wins=w_hit, losses=len(hit) - w_hit)
                            if len(miss) < MIN_SIDE else
-                           f"only {len(hit)} game{'s' if len(hit) != 1 else ''} with it — "
-                           "too few to compare")
+                           tf("only {games} games with it — too few to compare", games=len(hit)))
         return out
-    out["evidence"] = (f"with it: {w_hit}W-{len(hit) - w_hit}L  ·  "
-                       f"without: {w_miss}W-{len(miss) - w_miss}L")
+    out["evidence"] = tf("with it: {with_wins}W-{with_losses}L  ·  without: {without_wins}W-{without_losses}L",
+                         with_wins=w_hit, with_losses=len(hit) - w_hit,
+                         without_wins=w_miss, without_losses=len(miss) - w_miss)
     gap = _wr(miss) - _wr(hit)
     out["gap"] = gap
     out["z"] = lq._z_worse(w_hit, len(hit), w_miss, len(miss))
@@ -295,28 +296,32 @@ def _ledger():
 def headline(b):
     """The one line at the top of the board — the claim, sized to what it can prove."""
     if not b.get("ready"):
-        return f"reading your games — {b['need']} more and the board opens"
+        return tf("reading your games — {games} more and the board opens", games=b["need"])
     p = b.get("pick")
     if not p:
         rs = b.get("rows") or []
         if rs and all(r["state"] == "clean" for r in rs):
-            return f"your ledger is clean over {b['n']} games — none of the five fired"
-        return "nothing in your last games is repeating often enough to be a leak"
+            return tf("your ledger is clean over {games} games — none of the five fired", games=b["n"])
+        return t("nothing in your last games is repeating often enough to be a leak")
     if p["state"] == "priced":
-        return f"{p['label']} is costing you about {p['lp10']} LP every 10 games"
-    why = ("no games without it to compare against" if p["state"] == "rate"
-           else "the split isn't proven yet")
-    return f"{p['label']} fired in {p['n_hit']} of your last {p['n_ev']} — {why}"
+        return tf("{label} is costing you about {lp} LP every 10 games",
+                  label=p["label"], lp=p["lp10"])
+    why = (t("no games without it to compare against") if p["state"] == "rate"
+           else t("the split isn't proven yet"))
+    return tf("{label} fired in {hits} of your last {games} — {reason}",
+              label=p["label"], hits=p["n_hit"], games=p["n_ev"], reason=why)
 
 
 def receipt(b):
     """The provenance line. Says out loud where the LP number came from, and that the board
     is a correlation from your own games — never dressed up as a causal proof."""
     if not b.get("ready"):
-        return f"{b['n']} of {MIN_GAMES} graded games logged"
-    lp = (f"your own LP: +{b['lp_win']} / -{b['lp_loss']}" if b["lp_measured"]
-          else f"LP assumed at {LP_ASSUMED} (no rank history yet)")
-    return f"from your last {b['n']} graded games  ·  {lp}  ·  your split, not a study"
+        return tf("{games} of {minimum} graded games logged", games=b["n"], minimum=MIN_GAMES)
+    lp = (tf("your own LP: +{win} / -{loss}", win=b["lp_win"], loss=b["lp_loss"])
+          if b["lp_measured"] else
+          tf("LP assumed at {lp} (no rank history yet)", lp=LP_ASSUMED))
+    return tf("from your last {games} graded games  ·  {lp}  ·  your split, not a study",
+              games=b["n"], lp=lp)
 
 
 def commitment(b):
@@ -339,23 +344,24 @@ def lobby_card(b, verdict="GO"):
     if not p or verdict not in ("GO", "LAST ONE"):
         return None
     if p["state"] == "priced":
-        sub = f"{p['label']} — about {p['lp10']} LP every 10 games · {p['guard']} is watching it"
+        sub = tf("{label} — about {lp} LP every 10 games · {guard} is watching it",
+                 label=p["label"], lp=p["lp10"], guard=p["guard"])
     else:
-        sub = (f"{p['label']} — {p['n_hit']} of your last {p['n_ev']} · "
-               f"{p['guard']} is watching it")
+        sub = tf("{label} — {hits} of your last {games} · {guard} is watching it",
+                 label=p["label"], hits=p["n_hit"], games=p["n_ev"], guard=p["guard"])
     return {"line": p["fix"], "sub": sub}
 
 
 def row_note(r):
     """The right-hand number on a board row, sized to the claim the row may make."""
     if r["state"] == "priced":
-        return f"-{r['lp10']} LP / 10"   # ASCII hyphen: this string is drawn through
+        return tf("-{lp} LP / 10", lp=r["lp10"])   # ASCII hyphen: this string is drawn through
         #                                    a text-blind PIL font, where U+2212 is tofu
     if r["state"] == "clean":
-        return "clean"
+        return t("clean")
     if r["state"] == "thin":
-        return f"{r['need']} more"
-    return f"{r['n_hit']} of {r['n_ev']}"
+        return tf("{games} more", games=r["need"])
+    return tf("{hits} of {games}", hits=r["n_hit"], games=r["n_ev"])
 
 
 # ---- demo ledgers (every render state stays inspectable without waiting weeks) --------
@@ -439,6 +445,10 @@ def render(b):
 
 def selftest():
     """Every invariant the board is allowed to be trusted for. Raises on the first break."""
+    # The historical engine guards assert English source phrases. Locale parity is exercised
+    # separately by tools/selftest.py; keep these math/shape guards deterministic.
+    from smitei18n import set_lang
+    set_lang("en")
     def ck(cond, msg):
         if not cond:
             raise AssertionError(msg)

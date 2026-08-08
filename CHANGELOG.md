@@ -1,5 +1,26 @@
 ﻿# Smiteless â€” Patch Notes
 
+## Unreleased — local voice coach and phase-aware proactive coaching
+
+- Manual Coach questions now preempt an in-flight or speaking proactive tip with one
+  `Ctrl+Alt+C` press. Stale visual busy states recover directly into listening; a second press
+  still explicitly cancels a real manual turn.
+- Removed accumulated proactive-tip caps, including legacy saved limits. The 60-second global
+  cooldown and per-kind cooldown, dedupe, TTL, mute, state guards and failure backoff remain.
+- Added an optional `Ctrl+Alt+C` conversational coach from pre-queue through post-game, with
+  continuous text-only session memory, a non-activating answer card, cancellation and localized
+  English/PT-BR speech.
+- Added local multilingual Whisper `small` transcription with guided one-time download, trusted
+  hashes, shared model cache, explicit CPU/NVIDIA selection, keep-loaded/per-question policies and
+  complete-uninstall cleanup. Model weights remain outside the installer.
+- Added opt-in sparse proactive coaching across draft/loading/live/post-game while preserving
+  deterministic alert priority, loading silence, manual-coach priority and a one-game mute.
+- Added a phase-aware privacy boundary and one-round read-only context discovery. Provider prompts
+  exclude credentials, Riot IDs, PUUIDs and local paths; no shell, filesystem, browser or LCU-write
+  capability is exposed.
+- Claude/Codex selection is now shared by matchup and coach flows with no silent failover. TTS uses
+  Salli for English and Camila for Brazilian Portuguese, with matching-culture Windows fallback.
+
 ## v0.9.72 - THE OUT: the game you're LOSING, and the fourteen minutes nobody counts
 
 **New feature, and it is the first one aimed at the half of the climb this app has never

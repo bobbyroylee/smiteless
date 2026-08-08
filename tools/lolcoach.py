@@ -17,13 +17,15 @@ Usage:
 import sys, os
 
 # reuse the verified ddragon/op.gg plumbing from lolbuild.py + multi-source resolver,
-# the op.gg matchup helpers (lb.gather_*), and the shared claude CLI wrapper.
+# the op.gg matchup helpers (lb.gather_*), and the shared LLM provider facade.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("core", "ui", "tools"):            # cross-folder flat imports
     sys.path.insert(0, os.path.join(_ROOT, _d))
 import lolbuild as lb
 import lolgame as lg
-import claudecli as cc
+import llmcli
+import smiteconfig as cfg
+from smitei18n import lang, t, tf
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -38,24 +40,26 @@ def deterministic_analysis(lane_mu, role):
     nodata = [x for x in lane_mu if x[3] is None]
     if not rated and not nodata:
         return ""
-    fmt = lambda x: f"{x[1]} {x[0]} vs {x[2]} {x[3]:.0f}% ({x[4]}g)"
+    fmt = lambda x: tf("{role} {ally} vs {enemy} {winrate:.0f}% ({games}g)",
+                       role=x[1], ally=x[0], enemy=x[2], winrate=x[3], games=x[4])
     ranked = sorted(rated, key=lambda x: x[3], reverse=True)
     strong = [x for x in ranked if x[3] >= 52]
     weak = [x for x in ranked if x[3] < 48]
     even = [x for x in ranked if 48 <= x[3] < 52]
     out = []
     if strong:
-        tail = " -> path/gank these lanes" if role == "jungle" else " -> play for these"
-        out.append("STRONG (data): " + "; ".join(fmt(x) for x in strong) + tail)
+        tail = t(" -> path/gank these lanes") if role == "jungle" else t(" -> play for these")
+        out.append(t("STRONG (data): ") + "; ".join(fmt(x) for x in strong) + tail)
     if weak:
-        tail = (" -> play safe; the enemy jungler likely camps here"
-                if role == "jungle" else " -> respect, play safe")
-        out.append("WEAK (data): " + "; ".join(fmt(x) for x in weak) + tail)
+        tail = (t(" -> play safe; the enemy jungler likely camps here")
+                if role == "jungle" else t(" -> respect, play safe"))
+        out.append(t("WEAK (data): ") + "; ".join(fmt(x) for x in weak) + tail)
     if even:
-        out.append("EVEN (data): " + "; ".join(fmt(x) for x in even))
+        out.append(t("EVEN (data): ") + "; ".join(fmt(x) for x in even))
     if nodata:
-        out.append("NO OP.GG SAMPLE (pairing known, WR not): "
-                   + "; ".join(f"{x[1]} {x[0]} vs {x[2]}" for x in nodata))
+        out.append(t("NO OP.GG SAMPLE (pairing known, WR not): ")
+                   + "; ".join(tf("{role} {ally} vs {enemy}",
+                                  role=x[1], ally=x[0], enemy=x[2]) for x in nodata))
     return "\n".join(out)
 
 
@@ -65,15 +69,18 @@ def matchup_text(lane_mu, my_matchups, myname, role, ver):
     if lane_mu:
         parts = []
         for a, r, e, wr, g in lane_mu:
-            parts.append(f"{r} {a} vs {e} (no op.gg sample)" if wr is None
-                         else f"{r} {a} vs {e} {wr:.1f}% ({g}g)")
-        return ("VERIFIED LANE WINRATES (op.gg Emerald+, patch %s) - your team vs the "
-                "enemy in that lane (paired by role): " % ver + "; ".join(parts))
+            parts.append(tf("{role} {ally} vs {enemy} (no op.gg sample)",
+                            role=r, ally=a, enemy=e) if wr is None
+                         else tf("{role} {ally} vs {enemy} {winrate:.1f}% ({games}g)",
+                                 role=r, ally=a, enemy=e, winrate=wr, games=g))
+        return tf("VERIFIED LANE WINRATES (op.gg Emerald+, patch {patch}) - your team vs "
+                  "the enemy in that lane (paired by role): ", patch=ver) + "; ".join(parts)
     if my_matchups:
-        return (f"VERIFIED op.gg winrates for {myname} {role}: "
-                + "; ".join(f"vs {n} {wr:.1f}% ({g}g)" for n, wr, g in my_matchups))
-    return ("No op.gg matchup data for this game (roles not yet known, or no sample). "
-            "Do NOT invent win rates.")
+        return (tf("VERIFIED op.gg winrates for {champ} {role}: ", champ=myname, role=role)
+                + "; ".join(tf("vs {enemy} {winrate:.1f}% ({games}g)",
+                               enemy=n, winrate=wr, games=g) for n, wr, g in my_matchups))
+    return t("No op.gg matchup data for this game (roles not yet known, or no sample). "
+             "Do NOT invent win rates.")
 
 
 MACRO_PRINCIPLES = (
@@ -117,6 +124,11 @@ def build_prompt(dd, myname, role, allies, enemy_names, mu_text, ver):
         "4. Tactical advice (what a champ does) may use your own knowledge, but any "
         "matchup VERDICT must trace to a verified number above.\n"
     )
+    if lang() == "pt_BR":
+        common += ("5. Reply in Brazilian Portuguese. Keep champion names, role abbreviations, "
+                   "item names and every verified number unchanged.\n")
+    else:
+        common += "5. Reply in English.\n"
 
     if not role_known:
         ask = (
@@ -179,8 +191,8 @@ FALLBACK_MACRO_DEFAULT = ("Manage your wave for prio, set up objectives early wi
 
 
 def fallback(mu_text, role):
-    return (mu_text + "\n\nMACRO (" + (role or "?").upper() + "): "
-            + FALLBACK_MACRO.get(role, FALLBACK_MACRO_DEFAULT))
+    return (mu_text + tf("\n\nMACRO ({role}): ", role=(role or "?").upper())
+            + t(FALLBACK_MACRO.get(role, FALLBACK_MACRO_DEFAULT)))
 
 
 def _write(path, text):
@@ -208,6 +220,12 @@ def _takeflag(argv, name):
     return None
 
 
+def _call_ai(prompt):
+    """Dispatch through the persisted provider without changing verified coach data."""
+    provider = cfg.load().get("llm_provider", cfg.LLM_PROVIDER_DEFAULT)
+    return llmcli.call(prompt, provider)
+
+
 def main():
     # File mode (from Win+B): write a QUICK read immediately, then upgrade to the
     # full AI guide in place. Stdout mode (manual/console): just print the result.
@@ -223,7 +241,7 @@ def main():
     if args:  # manual mode (testing / no client)
         my_cid = dd["name2id"].get(dd["norm"](args[0]))
         if not my_cid:
-            print(f"Unknown champ '{args[0]}'.")
+            print(tf("Unknown champ '{champ}'.", champ=args[0]))
             return
         role = lb.ROLE.get((args[1].lower() if len(args) > 1 else "jungle"), "jungle")
         allies = []
@@ -257,26 +275,28 @@ def main():
     verified = mu_text
     if analysis:
         verified += "\n\n" + analysis
-    verified += ("\n\nMACRO (" + (role or "?").upper() + ", general principles): "
-                 + FALLBACK_MACRO.get(role, FALLBACK_MACRO_DEFAULT))
+    verified += (tf("\n\nMACRO ({role}, general principles): ",
+                    role=(role or "?").upper())
+                 + t(FALLBACK_MACRO.get(role, FALLBACK_MACRO_DEFAULT)))
 
-    header = f"[{source}] {myname} ({role or 'role?'}) vs " + (", ".join(enemy_names) or "unknown")
-    base = header + "\n\n=== VERIFIED (op.gg data) ===\n" + verified
+    header = tf("[{source}] {champ} ({role}) vs ", source=source, champ=myname,
+                role=role or t("role?")) + (", ".join(enemy_names) or t("unknown"))
+    base = header + t("\n\n=== VERIFIED (op.gg data) ===\n") + verified
     prompt = build_prompt(dd, myname, role, allies, enemy_names, mu_text, ver)
 
     def with_ai(text, err):
         if text:
-            return base + "\n\n=== AI TACTICAL NOTES (commentary, not a data source) ===\n" + text
-        return base + "\n\n(AI tactical notes skipped — the verified data above is complete.)"
+            return base + t("\n\n=== AI TACTICAL NOTES (commentary, not a data source) ===\n") + text
+        return base + t("\n\n(AI tactical notes skipped — the verified data above is complete.)")
 
     if outp:
-        _write(outp, base + "\n\n(AI tactical notes loading… the verified data above is already complete.)")
+        _write(outp, base + t("\n\n(AI tactical notes loading… the verified data above is already complete.)"))
         _touch(qm)
-        text, err = cc.call_claude(prompt)
+        text, err = _call_ai(prompt)
         _write(outp, with_ai(text, err))
         _touch(fm)
     else:
-        text, err = cc.call_claude(prompt)
+        text, err = _call_ai(prompt)
         print(with_ai(text, err))
 
 

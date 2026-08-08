@@ -28,3 +28,8 @@ dist/payload.zip
 
 # Copilot accidentally committed the frozen build here; it is a build artifact
 dist/SmitelessApp/
+
+# Local agent workspaces
+.codex/
+.cursor/
+thoughts/

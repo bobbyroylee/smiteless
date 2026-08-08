@@ -7,6 +7,8 @@ rows, plus a couple of fuller good/bad phrases for the loading-screen detail. A 
 override sharpens the highest-signal champs where the generic class read is too vague.
 """
 
+from smitei18n import coach
+
 # One-keyword read per primary class — for tight scoreboard rows.
 _SHORT = {"Assassin": "burst", "Marksman": "scales", "Mage": "poke",
           "Tank": "engage", "Fighter": "duelist", "Support": "peel"}
@@ -56,9 +58,9 @@ def short(dd, ref):
     cid = _cid(dd, ref)
     name = _name(dd, cid)
     if name in _OVERRIDE:
-        return _OVERRIDE[name][0]
+        return coach(_OVERRIDE[name][0])
     tags = dd.get("id2tags", {}).get(cid, []) or []
-    return _SHORT.get(tags[0], "") if tags else ""
+    return coach(_SHORT.get(tags[0], "")) if tags else ""
 
 
 def phrases(dd, ref):
@@ -66,13 +68,13 @@ def phrases(dd, ref):
     cid = _cid(dd, ref)
     name = _name(dd, cid)
     if name in _OVERRIDE:
-        return list(_OVERRIDE[name][1])
+        return [coach(text) for text in _OVERRIDE[name][1]]
     tags = dd.get("id2tags", {}).get(cid, []) or []
     out = list(_PHRASES.get(tags[0], [])) if tags else []
     info = dd.get("id2info", {}).get(cid, {}) or {}
     if int(info.get("difficulty", 0)) >= 8 and "high skill" not in " ".join(out):
         out.append("high skill — can misplay it")
-    return out[:3]
+    return [coach(text) for text in out[:3]]
 
 
 def dmg_type(dd, ref):

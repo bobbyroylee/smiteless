@@ -39,6 +39,8 @@ the habit, straight out of the behavior ledger, so it is your data talking and n
 """
 import time
 
+from smitei18n import t, tf
+
 WINDOW = 14 * 60.0     # seconds - the early_bleeding definition in lolprofile.behavior_read
 HP_BAR = 0.42          # health fraction at/below which a collapse is a real death
 HP_BAR_BLED = 0.58     # ... once you've already banked 2+ deaths inside the window
@@ -47,7 +49,7 @@ HP_BAR_MAX = 0.70      # never call it above this: at 3/4 health you are not dyi
 DIVE_LVL = 2           # a lane opponent this many levels up solo-kills you on his own
 _EV_TTL = 600.0        # re-read the behavior ledger at most this often
 
-_EV = {"t": 0.0, "text": None}
+_EV = {"t": 0.0, "raw": None}
 
 # The productive thing to do instead, by role. Same shape of instruction lolreentry gives
 # in its own window - one action, no theory - and imported from there so there is exactly
@@ -67,37 +69,40 @@ def _evidence():
     14W-9L'), or None when the ledger doesn't have both sides yet. Cached - it's a disk
     read and this is called from a 1s poll loop."""
     now = time.monotonic()
-    if _EV["text"] is not None and (now - _EV["t"]) < _EV_TTL:
-        return _EV["text"]
-    txt = None
+    if _EV["raw"] is not None and (now - _EV["t"]) < _EV_TTL:
+        return tf("your games with 3+ deaths before 14:00 — {evidence}",
+                  evidence=_EV["raw"])
+    raw = None
     try:
         import lolprofile as lp
         raw = lp.pattern_evidence("early_bleeding")
-        if raw:                       # "with it: 9W-14L · without: 14W-9L" — name what "it" is
-            txt = "your games with 3+ deaths before 14:00 — " + raw
     except Exception:
-        txt = None
-    _EV["t"], _EV["text"] = now, txt
-    return txt
+        raw = None
+    _EV["t"], _EV["raw"] = now, raw
+    return (tf("your games with 3+ deaths before 14:00 — {evidence}", evidence=raw)
+            if raw else None)
 
 
 def _threat(ctx):
     """(is_someone_able_to_collect, why) from facts the live client can prove. No claim
     without evidence: an unknown jungler is not a threat, it's an unknown."""
     jg = ctx.get("jg") or {}
-    state, champ = jg.get("state"), jg.get("champ") or "their jungler"
+    state, champ = jg.get("state"), jg.get("champ") or t("their jungler")
     lvl_up = int(ctx.get("opp_lvl_up") or 0)
     opp = ctx.get("opp_champ")
     if opp and lvl_up >= DIVE_LVL:
-        return True, f"{opp} is {lvl_up} levels up"
+        return True, tf("{champ} is {levels} levels up", champ=opp, levels=lvl_up)
     if not ctx.get("opp_alive"):
         return False, None            # nobody in lane to hold you there -> no collapse
     if state == "seen" and (jg.get("side") or "") == ctx.get("my_side"):
-        return True, f"{champ} was just {jg.get('side')}"
+        return True, tf("{champ} was just {side}", champ=champ,
+                        side=t(str(jg.get("side") or "").upper()))
     if state == "nosign":
-        return True, f"{champ} unaccounted {int(jg.get('idle') or 0)}s"
+        return True, tf("{champ} unaccounted {seconds}s", champ=champ,
+                        seconds=int(jg.get("idle") or 0))
     if state == "moving":
-        return True, f"{champ} off camps {int(jg.get('idle') or 0)}s"
+        return True, tf("{champ} off camps {seconds}s", champ=champ,
+                        seconds=int(jg.get("idle") or 0))
     return False, None                # dead / farming / seen elsewhere / no read at all
 
 
@@ -113,14 +118,16 @@ def _verdict(ctx):
     ok, why = _threat(ctx)
     if not ok:
         return None
-    sub = _SAFE.get(ctx.get("role") or "jungle", _SAFE["jungle"])
+    sub = t(_SAFE.get(ctx.get("role") or "jungle", _SAFE["jungle"]))
     if deaths >= 3:
-        sub += f" · {deaths} deaths before 14:00 — this is the 39% shape"
+        sub += tf(" · {deaths} deaths before 14:00 — this is the 39% shape",
+                  deaths=deaths)
     elif deaths == 2:
-        sub += " · 2 deaths before 14:00 — one more is the pattern"
+        sub += t(" · 2 deaths before 14:00 — one more is the pattern")
     return {"verdict": "BLEED", "tone": "hold", "deaths": deaths,
             "hp": int(round(hp * 100)),
-            "line": f"BACK OFF — {int(round(hp * 100))}% and {why}",
+            "line": tf("BACK OFF — {hp}% and {reason}",
+                       hp=int(round(hp * 100)), reason=why),
             "sub": sub}
 
 

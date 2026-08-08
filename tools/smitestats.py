@@ -15,6 +15,7 @@ import sys, os, json, ssl, threading, urllib.request
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _d in ("core", "ui", "tools"):
     sys.path.insert(0, os.path.join(_ROOT, _d))
+from smitei18n import t
 for _s in ("stdout", "stderr"):
     if getattr(sys, _s, None) is None:
         try:
@@ -47,14 +48,13 @@ def fetch():
 def main():
     import tkinter as tk
     root = tk.Tk()
-    root.title("Smiteless — Usage stats")
+    root.title(f"Smiteless — {t('Usage stats')}")
     root.configure(bg=BG)
     root.minsize(430, 380)
-    tk.Label(root, text="USAGE", bg=BG, fg=GOLD, font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=16, pady=(14, 0))
-    tk.Label(root, text="Every install auto-downloads each release, so a recent release's\n"
-                        "download count ≈ how many active installs existed when it shipped.",
+    tk.Label(root, text=t("USAGE"), bg=BG, fg=GOLD, font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=16, pady=(14, 0))
+    tk.Label(root, text=t("Every install auto-downloads each release, so a recent release's\ndownload count ≈ how many active installs existed when it shipped."),
              bg=BG, fg=MUTED, font=("Segoe UI", 9), justify="left").pack(anchor="w", padx=16, pady=(2, 8))
-    head = tk.Label(root, text="loading from GitHub…", bg=BG, fg=TXT, font=("Segoe UI", 11, "bold"))
+    head = tk.Label(root, text=t("loading from GitHub…"), bg=BG, fg=TXT, font=("Segoe UI", 11, "bold"))
     head.pack(anchor="w", padx=16)
     box = tk.Frame(root, bg=PANEL)
     box.pack(fill="both", expand=True, padx=14, pady=(8, 14))
@@ -63,7 +63,7 @@ def main():
         for w in box.winfo_children():
             w.destroy()
         if rows is None:
-            head.config(text="couldn't reach GitHub — try again later")
+            head.config(text=t("couldn't reach GitHub — try again later"))
             return
         total = sum(n for _t, n, _p in rows)
         recent = [n for _t, n, _p in rows[1:5] if n > 0]        # latest may still be rolling out
@@ -72,7 +72,7 @@ def main():
         hdr = tk.Frame(box, bg=PANEL)
         hdr.pack(fill="x", padx=12, pady=(10, 2))
         for txt, w_, anch in (("RELEASE", 12, "w"), ("DATE", 12, "w"), ("DOWNLOADS", 10, "e")):
-            tk.Label(hdr, text=txt, width=w_, anchor=anch, bg=PANEL, fg=GOLD,
+            tk.Label(hdr, text=t(txt), width=w_, anchor=anch, bg=PANEL, fg=GOLD,
                      font=("Segoe UI", 8, "bold")).pack(side="left")
         for tag, n, pub in rows[:14]:
             row = tk.Frame(box, bg=PANEL)

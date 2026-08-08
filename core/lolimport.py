@@ -14,6 +14,7 @@ import urllib.request
 
 import lolgame as lg
 import smiteconfig as cfg
+from smitei18n import tf
 
 
 def _lcu_json(method, path, payload=None, timeout=5):
@@ -658,4 +659,5 @@ def import_build(dd, cid, role, build):
             s1, s2 = s2, s1
         _lcu_json("PATCH", "/lol-champ-select/v1/session/my-selection",
                   {"spell1Id": s1, "spell2Id": s2})
-    return f"imported for {dd['id2name'].get(cid, '?')} ({role})"
+    return tf("imported for {champ} ({role})",
+              champ=dd["id2name"].get(cid, "?"), role=role)

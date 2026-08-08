@@ -396,5 +396,5 @@ def brief(dd, data):
         out["out"] = o
         out["wincon"] = o["line"]
         out["wincon_sub"] = o.get("sub")
-        out["wincon_title"] = "THE CALL" if o.get("verdict") == "CALL IT" else "HOW YOU WIN"
+        out["wincon_title"] = t("THE CALL") if o.get("verdict") == "CALL IT" else t("HOW YOU WIN")
     return out
